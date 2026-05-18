@@ -246,16 +246,32 @@ async function metaSelecionarPagina(clienteId, clienteNome) {
   const { data } = await supa.from('clientes').select('meta_token').eq('id', clienteId).single();
   if (!data?.meta_token) { showToast('Token Meta não encontrado.'); return; }
   showToast('Buscando páginas do Facebook...');
-  const res = await fetch(`https://graph.facebook.com/v19.0/me/accounts?access_token=${encodeURIComponent(data.meta_token)}`);
-  const json = await res.json();
-  const paginas = (json.data || []).map(p => ({ id: p.id, name: p.name, token: p.access_token }));
+
+  // Busca todas as páginas com paginação automática
+  let paginas = [];
+  let url = `https://graph.facebook.com/v19.0/me/accounts?limit=100&access_token=${encodeURIComponent(data.meta_token)}`;
+  try {
+    while (url) {
+      const res = await fetch(url);
+      const json = await res.json();
+      if (json.error) { showToast('Erro API: ' + json.error.message); return; }
+      paginas = paginas.concat((json.data || []).map(p => ({ id: p.id, name: p.name, token: p.access_token })));
+      url = json.paging?.cursors?.after
+        ? `https://graph.facebook.com/v19.0/me/accounts?limit=100&after=${json.paging.cursors.after}&access_token=${encodeURIComponent(data.meta_token)}`
+        : json.paging?.next || null;
+    }
+  } catch(e) { showToast('Erro ao buscar páginas.'); return; }
+
   if (paginas.length === 0) { showToast('Nenhuma página encontrada. Verifique se você é admin de alguma página.'); return; }
+  showToast(`${paginas.length} página${paginas.length > 1 ? 's' : ''} encontrada${paginas.length > 1 ? 's' : ''}!`);
   metaAbrirModal(clienteId, clienteNome, paginas);
 }
 
 function metaAbrirModal(clienteId, clienteNome, paginas) {
   const modal = document.getElementById('modal-meta-paginas');
   document.getElementById('meta-paginas-cliente-nome').textContent = clienteNome;
+  document.getElementById('meta-manual-cliente-id').value = clienteId;
+  document.getElementById('meta-manual-page-id').value = '';
   const container = document.getElementById('meta-paginas-lista');
   container.innerHTML = '';
   paginas.forEach(p => {
@@ -269,6 +285,37 @@ function metaAbrirModal(clienteId, clienteNome, paginas) {
     container.appendChild(div);
   });
   modal.style.display = 'flex';
+}
+
+async function metaSalvarIdManual() {
+  const clienteId = document.getElementById('meta-manual-cliente-id').value;
+  const pageId    = document.getElementById('meta-manual-page-id').value.trim();
+  if (!pageId) { showToast('Digite o ID da página'); return; }
+
+  const { data: cli } = await supa.from('clientes').select('meta_token,nome').eq('id', clienteId).single();
+  if (!cli?.meta_token) { showToast('Token Meta não encontrado.'); return; }
+
+  showToast('Verificando página...');
+
+  // Tenta buscar info da página pelo ID
+  let pageName = pageId;
+  let pageToken = cli.meta_token;
+  let igId = null;
+  try {
+    const res  = await fetch(`https://graph.facebook.com/v19.0/${pageId}?fields=name,access_token,instagram_business_account&access_token=${encodeURIComponent(cli.meta_token)}`);
+    const json = await res.json();
+    if (json.name)  pageName  = json.name;
+    if (json.access_token) pageToken = json.access_token;
+    igId = json.instagram_business_account?.id || null;
+  } catch(e) {}
+
+  await supa.from('clientes').update({ meta_page_id: pageId, meta_token: pageToken, meta_ig_id: igId, meta_page_name: pageName }).eq('id', clienteId);
+  const idx = allClientes.findIndex(c => c.id === clienteId);
+  if (idx >= 0) { allClientes[idx].meta_page_id = pageId; allClientes[idx].meta_token = pageToken; allClientes[idx].meta_ig_id = igId; allClientes[idx].meta_page_name = pageName; }
+  fetchMetaProfilePhoto(clienteId, pageId, pageToken).then(() => renderClientes());
+  document.getElementById('modal-meta-paginas').style.display = 'none';
+  showToast('✅ Página "' + pageName + '" vinculada!' + (igId ? ' Instagram encontrado.' : ''));
+  renderClientes();
 }
 
 async function metaSalvarPagina(clienteId, pageId, pageName, pageToken, el) {
@@ -934,7 +981,7 @@ async function metaPublicar(post) {
 
 <!-- MODAL PÁGINAS FACEBOOK -->
 <div id="modal-meta-paginas" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center">
-  <div style="background:var(--surface);border-radius:16px;padding:28px;width:420px;max-width:95vw;max-height:80vh;display:flex;flex-direction:column;gap:16px">
+  <div style="background:var(--surface);border-radius:16px;padding:28px;width:420px;max-width:95vw;max-height:85vh;display:flex;flex-direction:column;gap:16px">
     <div style="display:flex;align-items:center;justify-content:space-between">
       <div>
         <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px">Selecionar Página Facebook</div>
@@ -943,7 +990,14 @@ async function metaPublicar(post) {
       <button onclick="document.getElementById('modal-meta-paginas').style.display='none'" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text3)">×</button>
     </div>
     <div style="font-size:12px;color:var(--text3)">Escolha qual página será vinculada a este cliente:</div>
-    <div id="meta-paginas-lista" style="overflow-y:auto;max-height:340px;display:flex;flex-direction:column;gap:8px"></div>
+    <div id="meta-paginas-lista" style="overflow-y:auto;max-height:260px;display:flex;flex-direction:column;gap:8px"></div>
+    <!-- ID MANUAL -->
+    <div style="border-top:1px solid var(--border);padding-top:14px">
+      <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Página não aparece na lista? Insira o ID manualmente</div>
+      <input type="hidden" id="meta-manual-cliente-id">
+      <input type="text" id="meta-manual-page-id" placeholder="ID da Página Facebook (ex: 123456789)" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:13px;font-family:'DM Sans',sans-serif;color:var(--text);outline:none;box-sizing:border-box;margin-bottom:8px">
+      <button onclick="metaSalvarIdManual()" style="width:100%;padding:10px;background:var(--fb);color:#fff;border:none;border-radius:8px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600">Vincular por ID</button>
+    </div>
   </div>
 </div>
 
