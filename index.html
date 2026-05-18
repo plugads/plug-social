@@ -36,8 +36,11 @@ async function dbCarregarClientes() {
   return data;
 }
 async function dbSalvarCliente(c) {
-  const { data, error } = await supa.from('clientes').insert([{nome:c.nome,segmento:c.segmento,cor:c.cor,redes:c.redes}]).select().single();
-  if (error) { console.error(error); return null; }
+  const { data: { user } } = await supa.auth.getUser();
+  const payload = {nome:c.nome, segmento:c.segmento, cor:c.cor, redes:c.redes};
+  if (user) payload.user_id = user.id;
+  const { data, error } = await supa.from('clientes').insert([payload]).select().single();
+  if (error) { console.error('Erro ao salvar cliente:', error.message, error.details, error.hint); return null; }
   return data;
 }
 async function dbDeletarCliente(id) { await supa.from('clientes').delete().eq('id',id); }
@@ -360,7 +363,8 @@ async function metaPublicar(post) {
     } else { err.classList.add('show'); inp.value=''; inp.focus(); }
   }
   window.doLogin = doLogin;
-  if (sessionStorage.getItem(SK)==='1') document.getElementById('login-screen').classList.add('hidden');
+  const ls = document.getElementById('login-screen');
+  if (ls && sessionStorage.getItem(SK)==='1') ls.classList.add('hidden');
 })();
 </script>
 <style>
@@ -1175,7 +1179,7 @@ async function salvarNovoCliente() {
     document.getElementById('nc-segmento').value = '';
     ['nc-ig','nc-fb','nc-li'].forEach(id => document.getElementById(id).classList.remove('checked'));
   } else {
-    showToast('Erro ao salvar. Tente novamente.');
+    showToast('Erro ao salvar. Verifique o console (F12) para detalhes.');
   }
 }
 
