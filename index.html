@@ -1,0 +1,1520 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plug Social — Gestão de Redes</title>
+<!-- v2.1 -->
+<style>
+  #login-screen { position:fixed;inset:0;background:#f4f5f7;display:flex;align-items:center;justify-content:center;z-index:9999;font-family:'DM Sans',sans-serif; }
+  #login-screen.hidden { display:none; }
+  .login-box { background:#fff;border:1px solid #e2e4e9;border-radius:16px;padding:40px 36px;width:360px;max-width:95vw;box-shadow:0 4px 24px rgba(0,0,0,0.07); }
+  .login-logo { font-family:'Syne',sans-serif;font-weight:800;font-size:22px;letter-spacing:-0.5px;color:#1a1a2e;margin-bottom:4px; }
+  .login-logo span { color:#ff5c35; }
+  .login-sub { font-size:11px;color:#9a9ab0;letter-spacing:2px;text-transform:uppercase;margin-bottom:32px; }
+  .login-label { font-size:11px;color:#9a9ab0;text-transform:uppercase;letter-spacing:1px;font-weight:500;margin-bottom:6px; }
+  .login-input { width:100%;background:#f0f1f4;border:1px solid #e2e4e9;border-radius:8px;padding:11px 14px;font-size:14px;font-family:'DM Sans',sans-serif;color:#1a1a2e;outline:none;margin-bottom:20px;box-sizing:border-box;transition:border-color 0.15s; }
+  .login-input:focus { border-color:#ff5c35; }
+  .login-btn { width:100%;background:#ff5c35;color:#fff;border:none;border-radius:8px;padding:12px;font-size:14px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;transition:background 0.15s;margin-top:4px; }
+  .login-btn:hover { background:#ff8c6b; }
+  .login-error { background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);color:#dc2626;border-radius:8px;padding:10px 14px;font-size:13px;margin-top:12px;display:none; }
+  .login-error.show { display:block; }
+  .login-footer { font-size:11px;color:#9a9ab0;margin-top:24px;text-align:center; }
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+// ── SUPABASE ──
+const SUPA_URL = 'https://psfqarqnqxnndzddtatj.supabase.co';
+const SUPA_KEY = 'sb_publishable_JQfyqPkuhFx1UOya9f6LDw_2tVZU69k';
+const supa = supabase.createClient(SUPA_URL, SUPA_KEY);
+
+async function dbCarregarClientes() {
+  const { data, error } = await supa.from('clientes').select('*').order('criado_em',{ascending:false});
+  if (error) { console.error(error); return []; }
+  return data;
+}
+async function dbSalvarCliente(c) {
+  const { data, error } = await supa.from('clientes').insert([{nome:c.nome,segmento:c.segmento,cor:c.cor,redes:c.redes}]).select().single();
+  if (error) { console.error(error); return null; }
+  return data;
+}
+async function dbDeletarCliente(id) { await supa.from('clientes').delete().eq('id',id); }
+
+async function dbCarregarPosts() {
+  const { data, error } = await supa.from('posts').select('*').order('criado_em',{ascending:false});
+  if (error) { console.error(error); return []; }
+  return data;
+}
+async function dbSalvarPost(p) {
+  const { data, error } = await supa.from('posts').insert([{cliente_nome:p.cliente_nome,legenda:p.legenda,redes:p.redes,data_pub:p.data_pub||null,hora_pub:p.hora_pub||null,status:p.status||'agendado',tipo:p.tipo||'post',midia_url:p.midia_url||null}]).select().single();
+  if (error) { console.error(error); return null; }
+  return data;
+}
+async function dbAtualizarPost(id, campos) { await supa.from('posts').update(campos).eq('id',id); }
+async function dbDeletarPost(id) { await supa.from('posts').delete().eq('id',id); }
+
+async function dbCarregarRascunhos() {
+  const { data, error } = await supa.from('rascunhos').select('*').order('criado_em',{ascending:false});
+  if (error) { console.error(error); return []; }
+  return data;
+}
+async function dbSalvarRascunho(p) {
+  const { data, error } = await supa.from('rascunhos').insert([{cliente_nome:p.cliente_nome,legenda:p.legenda,redes:p.redes,data_pub:p.data_pub||null,hora_pub:p.hora_pub||null,tipo:p.tipo||'post',midia_url:p.midia_url||null}]).select().single();
+  if (error) { console.error(error); return null; }
+  return data;
+}
+async function dbDeletarRascunho(id) { await supa.from('rascunhos').delete().eq('id',id); }
+
+async function dbCarregarPerfil() {
+  const { data } = await supa.from('perfil').select('*').limit(1).single();
+  return data;
+}
+async function dbSalvarPerfil(p) {
+  const { data } = await supa.from('perfil').select('id').limit(1).single();
+  if (data) await supa.from('perfil').update({ nome: p.nome, agencia: p.agencia, foto_url: p.foto_url }).eq('id', data.id);
+}
+
+// ── META API ──
+const META_APP_ID = '4344231035846312';
+const META_REDIRECT = 'https://psfqarqnqxnndzddtatj.supabase.co/functions/v1/meta-oauth';
+const LI_CLIENT_ID = '771z1r20ymvoy0';
+const LI_REDIRECT = 'https://psfqarqnqxnndzddtatj.supabase.co/functions/v1/linkedin-oauth';
+const LI_SCOPE = 'openid,profile,w_member_social';
+
+function liConectar(clienteId, clienteNome) {
+  const state = encodeURIComponent(JSON.stringify({clienteId, clienteNome}));
+  const url = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${LI_CLIENT_ID}&redirect_uri=${encodeURIComponent(LI_REDIRECT)}&scope=${encodeURIComponent(LI_SCOPE)}&state=${state}`;
+  window.open(url,'_blank','width=620,height=700');
+  showToast('Janela de autorização LinkedIn aberta!');
+}
+
+async function liSelecionarPagina(clienteId, clienteNome) {
+  const { data } = await supa.from('clientes').select('li_token').eq('id', clienteId).single();
+  if (!data?.li_token) { showToast('Token LinkedIn nao encontrado.'); return; }
+  showToast('Buscando paginas do LinkedIn...');
+  const res = await fetch(`https://psfqarqnqxnndzddtatj.supabase.co/functions/v1/linkedin-pages?token=${encodeURIComponent(data.li_token)}`);
+  const json = await res.json();
+  const paginas = json.pages || [];
+  if (paginas.length === 0) { showToast('Nenhuma pagina encontrada. Verifique se voce e admin de alguma pagina.'); return; }
+  abrirModalPaginasLI(clienteId, clienteNome, paginas);
+}
+
+function abrirModalPaginasLI(clienteId, clienteNome, paginas) {
+  const modal = document.getElementById('modal-li-paginas');
+  document.getElementById('li-paginas-cliente-nome').textContent = clienteNome;
+  const lista = paginas.map(p => {
+    const div = document.createElement('div');
+    div.className = 'li-pagina-item';
+    div.innerHTML = '<div class="li-pagina-logo">' + p.name.slice(0,2).toUpperCase() + '</div>' +
+      '<div style="flex:1"><div style="font-weight:600;font-size:14px">' + p.name + '</div>' +
+      '<div style="font-size:11px;color:var(--text3)">ID: ' + p.id + '</div></div>' +
+      '<div class="li-pagina-check" style="display:none;color:#16a34a;font-weight:700">&#10003;</div>';
+    div.addEventListener('click', function() { liSalvarPagina(clienteId, p.id, p.name, div); });
+    return div;
+  });
+  const container = document.getElementById('li-paginas-lista');
+  container.innerHTML = '';
+  lista.forEach(el => container.appendChild(el));
+  modal.style.display = 'flex';
+}
+
+async function liDesconectar(clienteId) {
+  if (!confirm('Desconectar LinkedIn deste cliente e reconectar?')) return;
+  await supa.from('clientes').update({ li_token: null, li_org_id: null }).eq('id', clienteId);
+  const idx = allClientes.findIndex(c => c.id === clienteId);
+  if (idx >= 0) { allClientes[idx].li_token = null; allClientes[idx].li_org_id = null; }
+  renderClientes();
+  showToast('LinkedIn desconectado. Clique em "Conectar LinkedIn" para reconectar.');
+}
+
+function liAbrirModalManual(clienteId, clienteNome) {
+  document.getElementById('li-manual-cliente-id').value = clienteId;
+  document.getElementById('li-manual-cliente-nome').textContent = clienteNome;
+  document.getElementById('li-manual-org-id').value = '';
+  document.getElementById('modal-li-manual').style.display = 'flex';
+}
+
+async function liSalvarManual() {
+  const clienteId = document.getElementById('li-manual-cliente-id').value;
+  const orgId = document.getElementById('li-manual-org-id').value.trim();
+  if (!orgId) { showToast('Digite o ID da página'); return; }
+  await supa.from('clientes').update({ li_org_id: orgId, li_page_name: orgNome }).eq('id', clienteId);
+  const idx = allClientes.findIndex(c => c.id === clienteId);
+  if (idx >= 0) { allClientes[idx].li_org_id = orgId; allClientes[idx].li_page_name = orgNome; }
+  document.getElementById('modal-li-manual').style.display = 'none';
+  renderClientes();
+  showToast('✅ ID da página LinkedIn salvo!');
+}
+
+async function liSalvarPagina(clienteId, orgId, orgNome, el) {
+  document.querySelectorAll('.li-pagina-item').forEach(i => i.classList.remove('selected'));
+  el.classList.add('selected');
+  el.querySelector('.li-pagina-check').style.display = 'block';
+  await supa.from('clientes').update({ li_org_id: orgId }).eq('id', clienteId);
+  const idx = allClientes.findIndex(c => c.id === clienteId);
+  if (idx >= 0) allClientes[idx].li_org_id = orgId;
+  setTimeout(() => {
+    document.getElementById('modal-li-paginas').style.display = 'none';
+    renderClientes();
+    showToast('Pagina "' + orgNome + '" vinculada!');
+  }, 600);
+}
+
+async function liPublicar(post) {
+  const { data } = await supa.from('clientes').select('li_token,li_org_id').eq('nome', post.cliente_nome);
+  const c = data && data[0];
+  if (!c || !c.li_token) { showToast('Sem token LinkedIn para este cliente. Conecte primeiro.'); return false; }
+  if (!c.li_org_id) { showToast('ID da organização LinkedIn não encontrado.'); return false; }
+  try {
+    const res = await fetch('https://api.linkedin.com/v2/ugcPosts', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${c.li_token}`, 'Content-Type': 'application/json', 'X-Restli-Protocol-Version': '2.0.0' },
+      body: JSON.stringify({
+        author: `urn:li:organization:${c.li_org_id}`,
+        lifecycleState: 'PUBLISHED',
+        specificContent: { 'com.linkedin.ugc.ShareContent': { shareCommentary: { text: post.legenda }, shareMediaCategory: 'NONE' } },
+        visibility: { 'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC' }
+      })
+    });
+    return res.ok;
+  } catch(e) { console.error('LI:', e); return false; }
+}
+
+(function checkLiCallback() {
+  const p = new URLSearchParams(window.location.search);
+  if (p.get('li_connected') === '1') {
+    const nome = decodeURIComponent(p.get('cliente') || 'cliente');
+    const clienteId = p.get('cliente_id') || '';
+    window.history.replaceState({}, document.title, '/');
+    setTimeout(async () => {
+      showToast('✅ LinkedIn autorizado para ' + nome + '! Carregando páginas...');
+      await new Promise(r => setTimeout(r, 800));
+      if (clienteId) {
+        await liSelecionarPagina(clienteId, nome);
+      }
+    }, 500);
+  }
+  if (p.get('li_error')) {
+    const err = p.get('li_error');
+    const msgs = {
+      'unauthorized_scope_error': 'Escopo não autorizado no app LinkedIn.',
+      'access_denied': 'Acesso negado pelo usuário.',
+      'user_cancelled_login': 'Login cancelado.',
+      'user_cancelled_authorize': 'Autorização cancelada.'
+    };
+    setTimeout(() => showToast('❌ Erro LinkedIn: ' + (msgs[err] || err)), 500);
+    window.history.replaceState({}, document.title, '/');
+  }
+  if (p.get('connected') === '1') {
+    const nome = decodeURIComponent(p.get('cliente') || 'cliente');
+    const clienteId = p.get('cliente_id') || '';
+    const pagesRaw = p.get('pages') || '[]';
+    window.history.replaceState({}, document.title, '/');
+    setTimeout(async () => {
+      allClientes = await dbCarregarClientes();
+      renderClientes();
+      let pages = [];
+      try { pages = JSON.parse(decodeURIComponent(pagesRaw)); } catch(e) {}
+      if (pages.length > 0) {
+        showToast('✅ Facebook autorizado! Selecione a página...');
+        metaAbrirModal(clienteId, nome, pages);
+      } else {
+        showToast('✅ Facebook conectado para ' + nome + '! Nenhuma página encontrada.');
+      }
+    }, 600);
+  }
+  if (p.get('meta_error')) {
+    setTimeout(() => showToast('❌ Erro Meta: ' + p.get('meta_error')), 500);
+    window.history.replaceState({}, document.title, '/');
+  }
+})();
+const META_SCOPE = 'pages_manage_posts,pages_read_engagement,instagram_basic,instagram_content_publish,pages_show_list';
+
+function metaConectar(clienteId, clienteNome) {
+  const state = encodeURIComponent(JSON.stringify({clienteId, clienteNome}));
+  const url = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${META_APP_ID}&redirect_uri=${encodeURIComponent(META_REDIRECT)}&scope=${META_SCOPE}&state=${state}&response_type=code`;
+  window.open(url,'_blank','width=620,height=700');
+  showToast('Janela de autorização aberta!');
+}
+
+async function metaSelecionarPagina(clienteId, clienteNome) {
+  const { data } = await supa.from('clientes').select('meta_token').eq('id', clienteId).single();
+  if (!data?.meta_token) { showToast('Token Meta não encontrado.'); return; }
+  showToast('Buscando páginas do Facebook...');
+  const res = await fetch(`https://graph.facebook.com/v19.0/me/accounts?access_token=${encodeURIComponent(data.meta_token)}`);
+  const json = await res.json();
+  const paginas = (json.data || []).map(p => ({ id: p.id, name: p.name, token: p.access_token }));
+  if (paginas.length === 0) { showToast('Nenhuma página encontrada. Verifique se você é admin de alguma página.'); return; }
+  metaAbrirModal(clienteId, clienteNome, paginas);
+}
+
+function metaAbrirModal(clienteId, clienteNome, paginas) {
+  const modal = document.getElementById('modal-meta-paginas');
+  document.getElementById('meta-paginas-cliente-nome').textContent = clienteNome;
+  const container = document.getElementById('meta-paginas-lista');
+  container.innerHTML = '';
+  paginas.forEach(p => {
+    const div = document.createElement('div');
+    div.className = 'li-pagina-item';
+    div.innerHTML = '<div class="li-pagina-logo" style="background:#1877f2">' + p.name.slice(0,2).toUpperCase() + '</div>' +
+      '<div style="flex:1"><div style="font-weight:600;font-size:14px">' + p.name + '</div>' +
+      '<div style="font-size:11px;color:var(--text3)">ID: ' + p.id + '</div></div>' +
+      '<div class="li-pagina-check" style="display:none;color:#16a34a;font-weight:700">&#10003;</div>';
+    div.addEventListener('click', function() { metaSalvarPagina(clienteId, p.id, p.name, p.token, div); });
+    container.appendChild(div);
+  });
+  modal.style.display = 'flex';
+}
+
+async function metaSalvarPagina(clienteId, pageId, pageName, pageToken, el) {
+  document.querySelectorAll('#meta-paginas-lista .li-pagina-item').forEach(i => i.classList.remove('selected'));
+  el.classList.add('selected');
+  el.querySelector('.li-pagina-check').style.display = 'block';
+
+  // Busca Instagram vinculado à página selecionada
+  let igId = null;
+  try {
+    const igRes = await fetch(`https://graph.facebook.com/v19.0/${pageId}?fields=instagram_business_account&access_token=${encodeURIComponent(pageToken)}`);
+    const igData = await igRes.json();
+    igId = igData.instagram_business_account?.id || null;
+  } catch(e) {}
+
+  await supa.from('clientes').update({ meta_page_id: pageId, meta_token: pageToken, meta_ig_id: igId, meta_page_name: pageName }).eq('id', clienteId);
+  const idx = allClientes.findIndex(c => c.id === clienteId);
+  if (idx >= 0) { allClientes[idx].meta_page_id = pageId; allClientes[idx].meta_token = pageToken; allClientes[idx].meta_ig_id = igId; allClientes[idx].meta_page_name = pageName; }
+  fetchMetaProfilePhoto(clienteId, pageId, pageToken).then(() => renderClientes());
+  setTimeout(() => {
+    document.getElementById('modal-meta-paginas').style.display = 'none';
+    renderClientes();
+    showToast('✅ Página "' + pageName + '" vinculada!' + (igId ? ' Instagram encontrado.' : ''));
+  }, 600);
+}
+
+async function fetchMetaProfilePhoto(clienteId, pageId, pageToken) {
+  try {
+    const r = await fetch(`https://graph.facebook.com/v19.0/${pageId}/picture?type=large&redirect=false&access_token=${encodeURIComponent(pageToken)}`);
+    const d = await r.json();
+    const photoUrl = d.data?.url || null;
+    if (photoUrl) {
+      await supa.from('clientes').update({ foto_url: photoUrl }).eq('id', clienteId);
+      const idx = allClientes.findIndex(c => c.id === clienteId);
+      if (idx >= 0) allClientes[idx].foto_url = photoUrl;
+    }
+  } catch(e) { console.log('Foto não carregada:', e); }
+}
+
+async function metaDesconectar(clienteId) {
+  if (!confirm('Desconectar Facebook/Instagram deste cliente?')) return;
+  await supa.from('clientes').update({ meta_token: null, meta_page_id: null, meta_ig_id: null }).eq('id', clienteId);
+  const idx = allClientes.findIndex(c => c.id === clienteId);
+  if (idx >= 0) { allClientes[idx].meta_token = null; allClientes[idx].meta_page_id = null; allClientes[idx].meta_ig_id = null; }
+  renderClientes();
+  showToast('Facebook desconectado.');
+}
+
+async function metaPublicar(post) {
+  const { data } = await supa.from('clientes').select('meta_token,meta_ig_id,meta_page_id').eq('nome', post.cliente_nome);
+  const c = data && data[0];
+  if (!c || !c.meta_token) { showToast('Sem token Meta para este cliente. Conecte primeiro.'); return false; }
+  let ok = false;
+  if (post.redes.includes('ig') && c.meta_ig_id) {
+    try {
+      const r = await fetch(`https://graph.facebook.com/v19.0/${c.meta_ig_id}/media`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({caption:post.legenda,image_url:post.midia_url,access_token:c.meta_token})});
+      const j = await r.json();
+      if (j.id) { await fetch(`https://graph.facebook.com/v19.0/${c.meta_ig_id}/media_publish`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({creation_id:j.id,access_token:c.meta_token})}); ok=true; }
+    } catch(e) { console.error('IG:',e); }
+  }
+  if (post.redes.includes('fb') && c.meta_page_id) {
+    try {
+      await fetch(`https://graph.facebook.com/v19.0/${c.meta_page_id}/feed`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:post.legenda,access_token:c.meta_token})}); ok=true;
+    } catch(e) { console.error('FB:',e); }
+  }
+  return ok;
+}
+
+(function checkOAuth() {
+  const p = new URLSearchParams(window.location.search);
+  const code = p.get('code'), state = p.get('state');
+  if (code && state) {
+    try {
+      const {clienteId, clienteNome} = JSON.parse(decodeURIComponent(state));
+      supa.from('clientes').update({meta_code:code}).eq('id',clienteId).then(()=>{ showToast('Conta Meta conectada para '+clienteNome+'!'); });
+      window.history.replaceState({},document.title,'/');
+    } catch(e) {}
+  }
+})();
+
+// ── LOGIN ──
+(function() {
+  const SENHA = 'PluG@7354891032';
+  const SK = 'plugsocial_auth';
+  function doLogin() {
+    const inp = document.getElementById('login-password');
+    const err = document.getElementById('login-error');
+    if (inp.value === SENHA) {
+      sessionStorage.setItem(SK,'1');
+      document.getElementById('login-screen').classList.add('hidden');
+      err.classList.remove('show');
+    } else { err.classList.add('show'); inp.value=''; inp.focus(); }
+  }
+  window.doLogin = doLogin;
+  if (sessionStorage.getItem(SK)==='1') document.getElementById('login-screen').classList.add('hidden');
+})();
+</script>
+<style>
+  :root { --bg:#f4f5f7;--surface:#fff;--surface2:#f0f1f4;--border:#e2e4e9;--accent:#ff5c35;--text:#1a1a2e;--text2:#5a5a72;--text3:#9a9ab0;--green:#16a34a;--blue:#2563eb;--yellow:#d97706;--ig:#e1306c;--fb:#1877f2;--li:#0a66c2; }
+  * { margin:0;padding:0;box-sizing:border-box; }
+  body { background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;min-height:100vh;display:flex;overflow:hidden; }
+  .sidebar { width:220px;min-width:220px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;height:100vh;position:fixed;left:0;top:0; }
+  .logo { padding:24px 20px 20px;border-bottom:1px solid var(--border); }
+  .logo-mark { font-family:'Syne',sans-serif;font-weight:800;font-size:18px;letter-spacing:-0.5px; }
+  .logo-mark span { color:var(--accent); }
+  .logo-sub { font-size:10px;color:var(--text3);letter-spacing:2px;text-transform:uppercase;margin-top:2px; }
+  .nav { flex:1;padding:16px 12px;display:flex;flex-direction:column;gap:2px;overflow-y:auto; }
+  .nav-section { font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--text3);padding:12px 8px 6px;font-weight:500; }
+  .nav-item { display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;color:var(--text2);cursor:pointer;transition:all 0.15s;font-size:13px;font-weight:400;border:none;background:none;width:100%;text-align:left; }
+  .nav-item:hover { background:var(--surface2);color:var(--text); }
+  .nav-item.active { background:var(--accent);color:#fff; }
+  .nav-icon { font-size:15px;opacity:0.6; }
+  .nav-item.active .nav-icon { opacity:1; }
+  .nav-badge { margin-left:auto;background:var(--accent);color:#fff;font-size:10px;font-weight:600;padding:1px 6px;border-radius:20px; }
+  .nav-item.active .nav-badge { background:rgba(255,255,255,0.25); }
+  .sidebar-bottom { padding:16px 12px;border-top:1px solid var(--border); }
+  .user-pill { display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer; }
+  .user-pill:hover { background:var(--surface2); }
+  .avatar { width:30px;height:30px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:#fff;flex-shrink:0; }
+  .user-name { font-size:12px;font-weight:500; }
+  .user-role { font-size:10px;color:var(--text3); }
+  .main { margin-left:220px;flex:1;height:100vh;overflow-y:auto;display:flex;flex-direction:column; }
+  .topbar { padding:16px 28px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--bg);position:sticky;top:0;z-index:10; }
+  .page-title { font-family:'Syne',sans-serif;font-size:20px;font-weight:700;letter-spacing:-0.5px; }
+  .topbar-right { display:flex;align-items:center;gap:12px; }
+  .btn { display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;border:none;font-family:'DM Sans',sans-serif;transition:all 0.15s; }
+  .btn-primary { background:var(--accent);color:#fff; }
+  .btn-primary:hover { background:#ff4520; }
+  .btn-ghost { background:var(--surface);border:1px solid var(--border);color:var(--text2); }
+  .btn-ghost:hover { border-color:var(--text3);color:var(--text); }
+  .btn-blue { background:var(--fb);color:#fff; }
+  .btn-blue:hover { background:#1464cc; }
+  .content { padding:24px 28px;flex:1; }
+  .panel { display:none; }
+  .panel.active { display:block; }
+
+  /* STATS */
+  .stats-row { display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px; }
+  .stat-card { background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px; }
+  .stat-card.c1 { border-top:3px solid var(--accent); }
+  .stat-card.c2 { border-top:3px solid var(--green); }
+  .stat-card.c3 { border-top:3px solid var(--blue); }
+  .stat-card.c4 { border-top:3px solid var(--yellow); }
+  .stat-label { font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px; }
+  .stat-value { font-family:'Syne',sans-serif;font-size:28px;font-weight:700;letter-spacing:-1px; }
+  .stat-sub { font-size:11px;color:var(--text3);margin-top:4px; }
+
+  /* CARDS */
+  .card { background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:20px; }
+  .card-header { padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between; }
+  .card-title { font-family:'Syne',sans-serif;font-size:14px;font-weight:700; }
+
+  /* CLIENTES */
+  .clients-grid { display:grid;grid-template-columns:repeat(3,1fr);gap:16px; }
+  .client-card { background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;transition:border-color 0.2s,transform 0.2s; }
+  .client-card:hover { border-color:var(--text3);transform:translateY(-1px); }
+  .client-header { display:flex;align-items:center;gap:12px;margin-bottom:14px; }
+  .client-avatar { width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-weight:800;font-size:14px;color:#fff;flex-shrink:0; }
+  .client-name { font-family:'Syne',sans-serif;font-size:14px;font-weight:700; }
+  .client-segment { font-size:11px;color:var(--text3);margin-top:1px; }
+  .client-networks { display:flex;gap:6px;margin-bottom:14px; }
+  .client-net { width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700; }
+  .client-net.ig { background:rgba(225,48,108,0.15);color:var(--ig); }
+  .client-net.fb { background:rgba(24,119,242,0.15);color:var(--fb); }
+  .client-net.li { background:rgba(10,102,194,0.15);color:var(--li); }
+  .client-stats { display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px; }
+  .client-stat { background:var(--surface2);border-radius:8px;padding:10px 12px; }
+  .client-stat-val { font-family:'Syne',sans-serif;font-size:16px;font-weight:700; }
+  .client-stat-label { font-size:10px;color:var(--text3);margin-top:1px; }
+  .connect-btn { width:100%;padding:8px;background:var(--fb);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:background 0.15s; }
+  .connect-btn:hover { background:#1464cc; }
+  .connect-btn.connected { background:#16a34a; }
+
+  /* AGENDAMENTO */
+  .schedule-layout { display:grid;grid-template-columns:1fr 360px;gap:20px; }
+  .form-grid { display:grid;grid-template-columns:1fr 1fr;gap:14px; }
+  .form-group { display:flex;flex-direction:column;gap:6px; }
+  .form-group.full { grid-column:1/-1; }
+  .form-label { font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;font-weight:500; }
+  .form-input,.form-select,.form-textarea { background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 12px;outline:none;transition:border-color 0.15s;width:100%; }
+  .form-input:focus,.form-select:focus,.form-textarea:focus { border-color:var(--accent); }
+  .form-textarea { resize:vertical;min-height:100px;line-height:1.6; }
+  .net-checkboxes { display:flex;gap:8px; }
+  .net-check { display:flex;align-items:center;gap:6px;cursor:pointer;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);transition:all 0.15s;user-select:none;font-size:12px;font-weight:500; }
+  .net-check.checked.ig { border-color:var(--ig);background:rgba(225,48,108,0.1);color:var(--ig); }
+  .net-check.checked.fb { border-color:var(--fb);background:rgba(24,119,242,0.1);color:var(--fb); }
+  .net-check.checked.li { border-color:var(--li);background:rgba(10,102,194,0.1);color:var(--li); }
+  .preview-card { background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden; }
+  .preview-header { padding:14px 16px;border-bottom:1px solid var(--border); }
+  .preview-title { font-family:'Syne',sans-serif;font-size:13px;font-weight:700; }
+  .preview-body { padding:16px; }
+  .preview-post { background:var(--surface2);border-radius:10px;overflow:hidden;margin-bottom:12px; }
+  .preview-img { width:100%;height:180px;background:linear-gradient(135deg,#1a1a2e,#16213e);display:flex;align-items:center;justify-content:center; }
+  .preview-img-placeholder { font-size:32px;opacity:0.3; }
+  .preview-post-body { padding:12px; }
+  .preview-caption { font-size:12px;color:var(--text2);line-height:1.6; }
+  .preview-net-label { display:flex;align-items:center;gap:6px;margin-bottom:8px; }
+  .preview-net-dot { width:8px;height:8px;border-radius:50%; }
+
+  /* PUBLICAÇÕES */
+  .pub-layout { display:grid;grid-template-columns:200px 1fr;gap:20px;align-items:start; }
+  .pub-submenu { background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden; }
+  .pub-submenu-title { padding:14px 16px;font-family:'Syne',sans-serif;font-size:12px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;color:var(--text3);border-bottom:1px solid var(--border); }
+  .pub-submenu-item { padding:11px 16px;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);transition:background 0.1s;color:var(--text2); }
+  .pub-submenu-item:last-child { border-bottom:none; }
+  .pub-submenu-item:hover { background:var(--surface2);color:var(--text); }
+  .pub-submenu-item.active { background:var(--accent);color:#fff;font-weight:600; }
+  .pub-submenu-item.active .pub-count { background:rgba(255,255,255,0.25);color:#fff; }
+  .pub-count { font-size:10px;font-weight:600;background:var(--surface2);color:var(--text3);padding:2px 7px;border-radius:20px; }
+  .pub-filters { display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center; }
+  .pub-filter-input { background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--text);font-family:'DM Sans',sans-serif;outline:none; }
+  .pub-filter-input:focus { border-color:var(--accent); }
+  .pub-table { background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden; }
+  .pub-table-header { display:grid;grid-template-columns:2fr 100px 80px 90px 80px 80px;gap:12px;padding:10px 16px;background:var(--surface2);border-bottom:1px solid var(--border); }
+  .pub-th { font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--text3); }
+  .pub-row { display:grid;grid-template-columns:2fr 100px 80px 90px 80px 80px;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border);align-items:center;transition:background 0.1s; }
+  .pub-row:last-child { border-bottom:none; }
+  .pub-row:hover { background:var(--surface2); }
+  .pub-client-info { display:flex;align-items:center;gap:10px; }
+  .pub-name { font-size:12px;font-weight:600;color:var(--text);margin-bottom:2px; }
+  .pub-caption { font-size:11px;color:var(--text3);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.4; }
+  .pub-td { font-size:12px;color:var(--text2); }
+  .pub-nets { display:flex;gap:3px; }
+  .pub-net-icon { width:20px;height:20px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700; }
+  .pub-net-icon.ig { background:rgba(225,48,108,0.12);color:var(--ig); }
+  .pub-net-icon.fb { background:rgba(24,119,242,0.12);color:var(--fb); }
+  .pub-net-icon.li { background:rgba(10,102,194,0.12);color:var(--li); }
+
+  /* CALENDÁRIO */
+  .cal-nav { display:flex;align-items:center;gap:10px; }
+  .cal-month { font-size:13px;font-weight:500; }
+  .cal-btn { background:var(--surface2);border:1px solid var(--border);color:var(--text2);width:26px;height:26px;border-radius:6px;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center; }
+  .calendar { padding:16px 20px; }
+  .cal-days-header { display:grid;grid-template-columns:repeat(7,1fr);margin-bottom:8px; }
+  .cal-day-name { text-align:center;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;padding:4px 0; }
+  .cal-grid { display:grid;grid-template-columns:repeat(7,1fr);gap:3px; }
+  .cal-cell { aspect-ratio:1;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:4px 2px;cursor:pointer;position:relative;transition:background 0.1s;min-height:44px; }
+  .cal-cell:hover { background:var(--surface2); }
+  .cal-cell.today { background:var(--surface2); }
+  .cal-cell.today .cal-num { color:var(--accent);font-weight:700; }
+  .cal-cell.other-month .cal-num { color:var(--text3); }
+  .cal-num { font-size:12px;font-weight:500;line-height:1; }
+  .cal-dots { display:flex;gap:2px;margin-top:3px;flex-wrap:wrap;justify-content:center; }
+  .cal-dot { width:5px;height:5px;border-radius:50%; }
+  .cal-dot.ig { background:var(--ig); }
+  .cal-dot.fb { background:var(--fb); }
+  .cal-dot.li { background:var(--li); }
+
+  /* INBOX */
+  .inbox-layout { display:grid;grid-template-columns:280px 1fr;gap:0;border:1px solid var(--border);border-radius:12px;overflow:hidden;height:600px; }
+  .inbox-list { border-right:1px solid var(--border);background:var(--surface);overflow-y:auto; }
+  .inbox-conv { display:flex;flex-direction:column;background:var(--bg); }
+
+  /* MODAL */
+  .modal-overlay { display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:100;align-items:center;justify-content:center; }
+  .modal-overlay.open { display:flex; }
+  .modal { background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:28px;width:480px;max-width:95vw;max-height:90vh;overflow-y:auto; }
+  .modal-title { font-family:'Syne',sans-serif;font-size:18px;font-weight:700;margin-bottom:20px; }
+  .modal-actions { display:flex;gap:10px;justify-content:flex-end;margin-top:24px; }
+
+  /* TOAST */
+  .toast { position:fixed;bottom:24px;right:24px;background:var(--surface);border:1px solid var(--accent);border-radius:10px;padding:12px 18px;font-size:13px;color:var(--text);display:flex;align-items:center;gap:8px;transform:translateY(80px);opacity:0;transition:all 0.3s;z-index:200; }
+  .toast.show { transform:translateY(0);opacity:1; }
+  .toast-dot { width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0; }
+
+  /* EMPTY STATE */
+  .empty-state { text-align:center;padding:64px 24px;color:var(--text3); }
+  .empty-state-icon { font-size:40px;margin-bottom:12px;opacity:0.3; }
+  .empty-state-title { font-size:15px;font-weight:500;color:var(--text2);margin-bottom:6px; }
+  .empty-state-text { font-size:13px;line-height:1.6; }
+
+  /* PENDING BANNER */
+  .pending-banner { background:rgba(217,119,6,0.08);border:1px solid rgba(217,119,6,0.2);border-radius:10px;padding:14px 18px;font-size:13px;color:var(--yellow);line-height:1.6;margin-bottom:20px; }
+
+  ::-webkit-scrollbar { width:4px; }
+  ::-webkit-scrollbar-track { background:var(--surface2); }
+  ::-webkit-scrollbar-thumb { background:var(--border);border-radius:2px; }
+
+  .cor-opt { width:28px;height:28px;border-radius:6px;cursor:pointer;transition:transform 0.1s; }
+  .cor-opt:hover { transform:scale(1.15); }
+  .status-badge { font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px; }
+</style>
+</head>
+<body>
+
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">plug<span>.</span>social</div>
+    <div class="login-sub">Área restrita — Plug Comunicação</div>
+    <div class="login-label">Senha de acesso</div>
+    <input type="password" class="login-input" id="login-password" placeholder="Digite sua senha..." onkeydown="if(event.key==='Enter')doLogin()" autofocus>
+    <button class="login-btn" onclick="doLogin()">Entrar no sistema →</button>
+    <div class="login-error" id="login-error">Senha incorreta. Tente novamente.</div>
+    <div class="login-footer">Acesso exclusivo para a equipe Plug Comunicação</div>
+  </div>
+</div>
+
+<aside class="sidebar">
+  <div class="logo">
+    <div class="logo-mark">plug<span>.</span>social</div>
+    <div class="logo-sub">Gestão de Redes</div>
+  </div>
+  <nav class="nav">
+    <div class="nav-section">Principal</div>
+    <button class="nav-item active" onclick="showPanel('dashboard',this)"><span class="nav-icon">◈</span> Dashboard</button>
+    <button class="nav-item" onclick="showPanel('clientes',this)"><span class="nav-icon">◉</span> Clientes <span class="nav-badge" id="badge-clientes">0</span></button>
+    <div class="nav-section">Conteúdo</div>
+    <button class="nav-item" onclick="showPanel('agendar',this)"><span class="nav-icon">＋</span> Agendar Post</button>
+    <button class="nav-item" onclick="showPanel('calendario',this)"><span class="nav-icon">▦</span> Calendário</button>
+    <button class="nav-item" onclick="showPanel('publicacoes',this)"><span class="nav-icon">≡</span> Publicações</button>
+    <div class="nav-section">Operação</div>
+    <button class="nav-item" onclick="showPanel('inbox',this)"><span class="nav-icon">◎</span> Inbox / SAC</button>
+    <button class="nav-item" onclick="showPanel('relatorios',this)"><span class="nav-icon">◫</span> Relatórios</button>
+  </nav>
+  <div class="sidebar-bottom">
+    <div class="user-pill" onclick="document.getElementById('modal-perfil').classList.add('open')" title="Editar perfil">
+      <div class="avatar" id="sidebar-avatar" style="overflow:hidden">RC</div>
+      <div>
+        <div class="user-name" id="sidebar-nome">Cachote</div>
+        <div class="user-role" id="sidebar-agencia">Plug Comunicação</div>
+      </div>
+      <div style="margin-left:auto;font-size:10px;color:var(--text3)">✏️</div>
+    </div>
+  </div>
+</aside>
+
+<main class="main">
+  <div class="topbar">
+    <div class="page-title" id="page-title">Dashboard</div>
+    <div class="topbar-right">
+      <button class="btn btn-ghost" onclick="showPanel('calendario',document.querySelector('[onclick*=calendario]'))">📅 Calendário</button>
+      <button class="btn btn-primary" onclick="showPanel('agendar',document.querySelector('[onclick*=agendar]'))">+ Novo Post</button>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- DASHBOARD -->
+    <div class="panel active" id="panel-dashboard">
+      <div class="stats-row">
+        <div class="stat-card c1">
+          <div class="stat-label">Clientes ativos</div>
+          <div class="stat-value" id="dash-clientes">0</div>
+          <div class="stat-sub">Cadastrados no sistema</div>
+        </div>
+        <div class="stat-card c2">
+          <div class="stat-label">Posts agendados</div>
+          <div class="stat-value" id="dash-agendados">0</div>
+          <div class="stat-sub">Aguardando publicação</div>
+        </div>
+        <div class="stat-card c3">
+          <div class="stat-label">Publicados</div>
+          <div class="stat-value" id="dash-publicados">0</div>
+          <div class="stat-sub">Total publicados</div>
+        </div>
+        <div class="stat-card c4">
+          <div class="stat-label">Rascunhos</div>
+          <div class="stat-value" id="dash-rascunhos">0</div>
+          <div class="stat-sub">Salvos para edição</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Próximos posts agendados</div>
+          <span style="font-size:11px;color:var(--accent);cursor:pointer;font-weight:600" onclick="showPanel('publicacoes',document.querySelector('[onclick*=publicacoes]'))">Ver todos →</span>
+        </div>
+        <div id="dash-proximos" style="padding:8px"></div>
+      </div>
+    </div>
+
+    <!-- CLIENTES -->
+    <div class="panel" id="panel-clientes">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+        <div style="font-size:13px;color:var(--text3)" id="clients-count">Carregando...</div>
+        <button class="btn btn-primary" onclick="document.getElementById('modal-novo-cliente').classList.add('open')">+ Novo Cliente</button>
+      </div>
+      <div class="clients-grid" id="clients-grid"></div>
+    </div>
+
+    <!-- AGENDAR -->
+    <div class="panel" id="panel-agendar">
+      <div class="schedule-layout">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title" id="form-title">Novo agendamento</div>
+          </div>
+          <div style="padding:20px">
+            <input type="hidden" id="editing-post-id" value="">
+            <input type="hidden" id="editing-type" value="">
+            <div class="form-grid">
+              <div class="form-group">
+                <label class="form-label">Cliente</label>
+                <select class="form-select" id="sched-client" onchange="updatePreview()">
+                  <option value="">Selecionar cliente...</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Tipo de post</label>
+                <select class="form-select" id="sched-type" onchange="updatePreview()">
+                  <option value="post">Post</option>
+                  <option value="story">Story</option>
+                  <option value="reels">Reels</option>
+                  <option value="carrossel">Carrossel</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Data</label>
+                <input type="date" class="form-input" id="sched-date" onchange="updatePreview()">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Horário</label>
+                <input type="time" class="form-input" id="sched-time" value="09:00" onchange="updatePreview()">
+              </div>
+              <div class="form-group full">
+                <label class="form-label">Redes sociais</label>
+                <div class="net-checkboxes">
+                  <div class="net-check ig checked" onclick="toggleNet(this)">📷 Instagram</div>
+                  <div class="net-check fb" onclick="toggleNet(this)">f Facebook</div>
+                  <div class="net-check li" onclick="toggleNet(this)">in LinkedIn</div>
+                </div>
+              </div>
+              <div class="form-group full">
+                <label class="form-label">Legenda</label>
+                <textarea class="form-textarea" id="sched-caption" placeholder="Digite a legenda do post..." oninput="updatePreview()"></textarea>
+              </div>
+              <div class="form-group full">
+                <label class="form-label">Mídia</label>
+                <div id="upload-area" style="border:2px dashed var(--border);border-radius:10px;padding:28px;text-align:center;cursor:pointer;transition:border-color 0.15s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'" onclick="document.getElementById('file-input').click()" ondragover="event.preventDefault();this.style.borderColor='var(--accent)'" ondrop="handleDrop(event)">
+                  <div style="font-size:24px;margin-bottom:8px">📎</div>
+                  <div style="font-size:12px;color:var(--text3)">Arraste imagens/vídeos ou <span style="color:var(--accent);font-weight:600">clique para selecionar</span></div>
+                  <div style="font-size:10px;color:var(--text3);margin-top:4px">JPG, PNG, MP4 — máx 400MB</div>
+                </div>
+                <input type="file" id="file-input" accept="image/*,video/*" multiple style="display:none" onchange="handleFiles(this.files)">
+                <div id="media-preview" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px"></div>
+              </div>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:20px">
+              <button class="btn btn-ghost" onclick="saveDraft()">Salvar rascunho</button>
+              <button class="btn btn-primary" onclick="schedulePost()" style="flex:1">Agendar publicação →</button>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="preview-card">
+            <div class="preview-header"><div class="preview-title">Pré-visualização</div></div>
+            <div class="preview-body">
+              <div id="preview-net-labels"></div>
+              <div class="preview-post">
+                <div class="preview-img"><div class="preview-img-placeholder">🖼</div></div>
+                <div class="preview-post-body">
+                  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                    <div style="width:28px;height:28px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff" id="preview-avatar">?</div>
+                    <div>
+                      <div style="font-size:12px;font-weight:600" id="preview-client-name">Cliente</div>
+                      <div style="font-size:10px;color:var(--text3)" id="preview-time">Agora</div>
+                    </div>
+                  </div>
+                  <div class="preview-caption" id="preview-caption">A legenda vai aparecer aqui...</div>
+                </div>
+              </div>
+              <div style="font-size:11px;color:var(--text3);text-align:center;padding:8px" id="preview-schedule-info">Selecione data e horário</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PUBLICAÇÕES -->
+    <div class="panel" id="panel-publicacoes">
+      <div class="pub-layout">
+        <div>
+          <div class="pub-submenu">
+            <div class="pub-submenu-title">Publicações</div>
+            <div class="pub-submenu-item active" onclick="filterPub('agendado',this)">Agendadas <span class="pub-count" id="count-agendado">0</span></div>
+            <div class="pub-submenu-item" onclick="filterPub('rascunho',this)">Rascunhos <span class="pub-count" id="count-rascunho">0</span></div>
+            <div class="pub-submenu-item" onclick="filterPub('publicado',this)">Publicadas <span class="pub-count" id="count-publicado">0</span></div>
+            <div class="pub-submenu-item" onclick="filterPub('erro',this)">Com erro <span class="pub-count" id="count-erro">0</span></div>
+          </div>
+        </div>
+        <div>
+          <div class="pub-filters">
+            <input type="text" class="pub-filter-input" placeholder="Buscar..." id="filter-texto" style="flex:1" oninput="renderPubTable()">
+            <select class="pub-filter-input" id="filter-rede" onchange="renderPubTable()">
+              <option value="">Todas as redes</option>
+              <option value="ig">Instagram</option>
+              <option value="fb">Facebook</option>
+              <option value="li">LinkedIn</option>
+            </select>
+            <select class="pub-filter-input" id="filter-cliente-pub" onchange="renderPubTable()" style="min-width:140px">
+              <option value="">Todos os clientes</option>
+            </select>
+          </div>
+          <div class="pub-table">
+            <div class="pub-table-header">
+              <div class="pub-th">Cliente / Legenda</div>
+              <div class="pub-th">Data</div>
+              <div class="pub-th">Hora</div>
+              <div class="pub-th">Redes</div>
+              <div class="pub-th">Status</div>
+              <div class="pub-th">Ações</div>
+            </div>
+            <div id="pub-rows"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CALENDÁRIO -->
+    <div class="panel" id="panel-calendario">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title" id="cal-title">Calendário Editorial</div>
+          <div class="cal-nav">
+            <button class="cal-btn" onclick="changeMonth(-1)">‹</button>
+            <span class="cal-month" id="cal-month-label"></span>
+            <button class="cal-btn" onclick="changeMonth(1)">›</button>
+          </div>
+        </div>
+        <div class="calendar">
+          <div class="cal-days-header">
+            <div class="cal-day-name">Dom</div><div class="cal-day-name">Seg</div><div class="cal-day-name">Ter</div>
+            <div class="cal-day-name">Qua</div><div class="cal-day-name">Qui</div><div class="cal-day-name">Sex</div><div class="cal-day-name">Sáb</div>
+          </div>
+          <div class="cal-grid" id="cal-grid-full"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- INBOX -->
+    <div class="panel" id="panel-inbox">
+      <div class="pending-banner">
+        ⚠️ <strong>Inbox em breve:</strong> a integração com mensagens e comentários reais do Instagram e Facebook requer aprovação adicional do Meta (permissões <code>pages_messaging</code> e <code>instagram_manage_comments</code>). Assim que aprovado, as conversas aparecerão aqui em tempo real.
+      </div>
+      <div class="empty-state">
+        <div class="empty-state-icon">💬</div>
+        <div class="empty-state-title">Inbox aguardando aprovação</div>
+        <div class="empty-state-text">Quando o Meta aprovar as permissões de mensagens,<br>todas as conversas dos seus clientes aparecerão aqui.</div>
+      </div>
+    </div>
+
+    <!-- RELATÓRIOS -->
+    <div class="panel" id="panel-relatorios">
+      <div class="pending-banner">
+        ⚠️ <strong>Métricas em breve:</strong> dados reais de alcance, engajamento e seguidores requerem aprovação das permissões <code>instagram_manage_insights</code> e <code>pages_read_engagement</code> no Meta. As métricas aparecerão aqui após aprovação.
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">Resumo de publicações</div></div>
+        <div style="padding:20px" id="report-summary"></div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<!-- MODAL NOVO CLIENTE -->
+<div class="modal-overlay" id="modal-novo-cliente">
+  <div class="modal">
+    <div class="modal-title">Novo cliente</div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">Nome da empresa</label>
+        <input type="text" class="form-input" id="nc-nome" placeholder="Ex: Empresa XYZ">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Segmento</label>
+        <input type="text" class="form-input" id="nc-segmento" placeholder="Ex: Tecnologia">
+      </div>
+      <div class="form-group full">
+        <label class="form-label">Redes sociais</label>
+        <div class="net-checkboxes">
+          <div class="net-check ig" id="nc-ig" onclick="this.classList.toggle('checked')">📷 Instagram</div>
+          <div class="net-check fb" id="nc-fb" onclick="this.classList.toggle('checked')">f Facebook</div>
+          <div class="net-check li" id="nc-li" onclick="this.classList.toggle('checked')">in LinkedIn</div>
+        </div>
+      </div>
+      <div class="form-group full">
+        <label class="form-label">Cor do avatar</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px" id="cor-picker">
+          <input type="hidden" id="nc-cor" value="#ff5c35">
+        </div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarNovoCliente()">Salvar cliente</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL PERFIL -->
+<div class="modal-overlay" id="modal-perfil">
+  <div class="modal">
+    <div class="modal-title">Editar perfil</div>
+    <div style="display:flex;flex-direction:column;align-items:center;margin-bottom:20px">
+      <div id="perfil-avatar-preview" style="width:80px;height:80px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-weight:800;font-size:28px;color:#fff;margin-bottom:12px;overflow:hidden;cursor:pointer" onclick="document.getElementById('perfil-foto-input').click()">RC</div>
+      <div style="font-size:12px;color:var(--text3)">Clique na foto para alterar</div>
+      <input type="file" id="perfil-foto-input" accept="image/*" style="display:none" onchange="handlePerfilFoto(this)">
+      <input type="hidden" id="perfil-foto-url" value="">
+    </div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">Seu nome</label>
+        <input type="text" class="form-input" id="perfil-nome" placeholder="Ex: Cachote">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Nome da agência</label>
+        <input type="text" class="form-input" id="perfil-agencia" placeholder="Ex: Plug Comunicação">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarPerfil()">Salvar perfil</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL PÁGINAS FACEBOOK -->
+<div id="modal-meta-paginas" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center">
+  <div style="background:var(--surface);border-radius:16px;padding:28px;width:420px;max-width:95vw;max-height:80vh;display:flex;flex-direction:column;gap:16px">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px">Selecionar Página Facebook</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:2px">Cliente: <span id="meta-paginas-cliente-nome"></span></div>
+      </div>
+      <button onclick="document.getElementById('modal-meta-paginas').style.display='none'" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text3)">×</button>
+    </div>
+    <div style="font-size:12px;color:var(--text3)">Escolha qual página será vinculada a este cliente:</div>
+    <div id="meta-paginas-lista" style="overflow-y:auto;max-height:340px;display:flex;flex-direction:column;gap:8px"></div>
+  </div>
+</div>
+
+<!-- MODAL ID MANUAL LINKEDIN -->
+<div id="modal-li-manual" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center">
+  <div style="background:var(--surface);border-radius:16px;padding:28px;width:400px;max-width:95vw;display:flex;flex-direction:column;gap:16px">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px">Vincular Página LinkedIn</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:2px">Cliente: <span id="li-manual-cliente-nome"></span></div>
+      </div>
+      <button onclick="document.getElementById('modal-li-manual').style.display='none'" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text3)">×</button>
+    </div>
+    <input type="hidden" id="li-manual-cliente-id">
+    <div>
+      <label style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;font-weight:500;display:block;margin-bottom:6px">ID da Página LinkedIn</label>
+      <input type="text" id="li-manual-org-id" placeholder="Ex: 10033292" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:14px;font-family:'DM Sans',sans-serif;color:var(--text1);outline:none;box-sizing:border-box">
+      <div style="font-size:11px;color:var(--text3);margin-top:6px">Encontre o ID na URL da sua página: linkedin.com/company/<strong>ID</strong>/admin</div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button onclick="document.getElementById('modal-li-manual').style.display='none'" style="flex:1;padding:10px;background:none;border:1px solid var(--border);border-radius:8px;cursor:pointer;font-family:inherit;font-size:13px">Cancelar</button>
+      <button onclick="liSalvarManual()" style="flex:1;padding:10px;background:#0a66c2;color:#fff;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:500">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL PÁGINAS LINKEDIN -->
+<div id="modal-li-paginas" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center">
+  <div style="background:var(--surface);border-radius:16px;padding:28px;width:420px;max-width:95vw;max-height:80vh;display:flex;flex-direction:column;gap:16px">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px">Selecionar Página LinkedIn</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:2px">Cliente: <span id="li-paginas-cliente-nome"></span></div>
+      </div>
+      <button onclick="document.getElementById('modal-li-paginas').style.display='none'" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text3)">×</button>
+    </div>
+    <div style="font-size:12px;color:var(--text3)">Escolha qual página do LinkedIn será vinculada a este cliente:</div>
+    <div id="li-paginas-lista" style="overflow-y:auto;max-height:340px;display:flex;flex-direction:column;gap:8px"></div>
+  </div>
+</div>
+
+<style>
+.li-pagina-item {
+  display:flex;align-items:center;gap:12px;padding:12px 14px;
+  border:1.5px solid var(--border);border-radius:10px;cursor:pointer;transition:all 0.15s;
+}
+.li-pagina-item:hover { border-color:#0a66c2;background:rgba(10,102,194,0.05); }
+.li-pagina-item.selected { border-color:#16a34a;background:rgba(22,163,74,0.07); }
+.li-pagina-logo {
+  width:40px;height:40px;border-radius:8px;background:#0a66c2;
+  display:flex;align-items:center;justify-content:center;
+  color:#fff;font-weight:700;font-size:14px;font-family:'Syne',sans-serif;flex-shrink:0;
+}
+</style>
+
+<!-- TOAST -->
+<div class="toast" id="toast"><div class="toast-dot"></div><span id="toast-msg"></span></div>
+
+<script>
+// ── STATE ──
+let allPosts = [];
+let allRascunhos = [];
+let allClientes = [];
+let pubFilter = 'agendado';
+let calYear, calMonth;
+
+// ── UTILS ──
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  document.getElementById('toast-msg').textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+function closeModal() { document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('open')); }
+function showPanel(id, btn) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-'+id).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  const titles = {dashboard:'Dashboard',clientes:'Clientes',agendar:'Novo agendamento',publicacoes:'Publicações',calendario:'Calendário editorial',inbox:'Inbox / SAC',relatorios:'Relatórios'};
+  document.getElementById('page-title').textContent = titles[id] || id;
+}
+
+// ── COR PICKER ──
+function initCorPicker() {
+  const cores = ['#ff5c35','#6366f1','#0ea5e9','#10b981','#f59e0b','#ec4899','#8b5cf6','#14b8a6','#1877f2','#e1306c'];
+  const picker = document.getElementById('cor-picker');
+  cores.forEach((c,i) => {
+    const div = document.createElement('div');
+    div.className = 'cor-opt';
+    div.style.cssText = `background:${c};outline:${i===0?'3px solid #1a1a2e':'none'};outline-offset:2px`;
+    div.onclick = () => {
+      document.getElementById('nc-cor').value = c;
+      document.querySelectorAll('.cor-opt').forEach(x => x.style.outline = 'none');
+      div.style.outline = '3px solid #1a1a2e';
+    };
+    picker.appendChild(div);
+  });
+}
+
+// ── DASHBOARD ──
+function renderDashboard() {
+  const agendados = allPosts.filter(p => p.status === 'agendado').length;
+  const publicados = allPosts.filter(p => p.status === 'publicado').length;
+  document.getElementById('dash-clientes').textContent = allClientes.length;
+  document.getElementById('dash-agendados').textContent = agendados;
+  document.getElementById('dash-publicados').textContent = publicados;
+  document.getElementById('dash-rascunhos').textContent = allRascunhos.length;
+  document.getElementById('badge-clientes').textContent = allClientes.length;
+
+  const proximos = allPosts
+    .filter(p => p.status === 'agendado' && p.data_pub)
+    .sort((a,b) => new Date(a.data_pub+' '+a.hora_pub) - new Date(b.data_pub+' '+b.hora_pub))
+    .slice(0, 5);
+
+  const el = document.getElementById('dash-proximos');
+  if (proximos.length === 0) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📅</div><div class="empty-state-title">Nenhum post agendado</div><div class="empty-state-text">Clique em "+ Novo Post" para começar.</div></div>';
+    return;
+  }
+  el.innerHTML = proximos.map(p => `
+    <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border)">
+      <div style="width:36px;height:36px;border-radius:8px;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">📸</div>
+      <div style="flex:1">
+        <div style="font-size:12px;font-weight:600">${p.cliente_nome}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">${p.legenda ? p.legenda.slice(0,60)+'...' : '(sem legenda)'}</div>
+      </div>
+      <div style="text-align:right;font-size:11px;color:var(--text3)">${p.data_pub || '--'}<br>${p.hora_pub || '--'}</div>
+    </div>
+  `).join('');
+}
+
+// ── CLIENTES ──
+function renderClientes() {
+  const grid = document.getElementById('clients-grid');
+  document.getElementById('clients-count').textContent = `${allClientes.length} cliente${allClientes.length !== 1 ? 's' : ''} cadastrado${allClientes.length !== 1 ? 's' : ''}`;
+
+  // Atualiza select de clientes no formulário
+  const sel = document.getElementById('sched-client');
+  const selPub = document.getElementById('filter-cliente-pub');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">Selecionar cliente...</option>';
+  selPub.innerHTML = '<option value="">Todos os clientes</option>';
+  allClientes.forEach(c => {
+    sel.innerHTML += `<option value="${c.nome}">${c.nome}</option>`;
+    selPub.innerHTML += `<option value="${c.nome}">${c.nome}</option>`;
+  });
+  sel.value = prev;
+
+  if (allClientes.length === 0) {
+    grid.innerHTML = `<div style="grid-column:1/-1" class="empty-state"><div class="empty-state-icon">👥</div><div class="empty-state-title">Nenhum cliente cadastrado</div><div class="empty-state-text">Clique em "+ Novo Cliente" para adicionar seu primeiro cliente.</div></div>`;
+    return;
+  }
+
+  grid.innerHTML = allClientes.map(c => {
+    const redes = (c.redes || []);
+    const postsCliente = allPosts.filter(p => p.cliente_nome === c.nome).length;
+    const agendadosCliente = allPosts.filter(p => p.cliente_nome === c.nome && p.status === 'agendado').length;
+    const conectado = !!c.meta_token;
+    return `
+    <div class="client-card">
+      <div class="client-header">
+        ${c.foto_url
+          ? `<img src="${c.foto_url}" class="client-avatar" style="object-fit:cover;padding:0" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+          : ''}
+        <div class="client-avatar" style="background:${c.cor||'#6366f1'};${c.foto_url?'display:none':''}">${c.nome.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()}</div>
+        <div>
+          <div class="client-name">${c.nome}</div>
+          <div class="client-segment">${c.segmento||''}</div>
+        </div>
+      </div>
+      <div class="client-networks">
+        ${redes.map(n=>`<div class="client-net ${n}">${n==='ig'?'IG':n==='fb'?'FB':'IN'}</div>`).join('')}
+      </div>
+      <div class="client-stats">
+        <div class="client-stat">
+          <div class="client-stat-val">${postsCliente}</div>
+          <div class="client-stat-label">Posts totais</div>
+        </div>
+        <div class="client-stat">
+          <div class="client-stat-val">${agendadosCliente}</div>
+          <div class="client-stat-label">Agendados</div>
+        </div>
+      </div>
+      ${conectado ? `
+        <div style="display:flex;gap:6px">
+          <button class="connect-btn connected" onclick="metaSelecionarPagina('${c.id}','${c.nome}')" style="flex:1">
+            ${c.meta_page_id ? '✓ ' + (c.meta_page_name || 'Página vinculada') + ' — alterar' : '✓ Token OK — Selecionar Página →'}
+          </button>
+          <button onclick="metaDesconectar('${c.id}')" title="Desconectar" style="padding:8px 10px;background:none;border:1px solid #16a34a;border-radius:8px;cursor:pointer;font-size:13px;color:#16a34a">↺</button>
+        </div>
+      ` : `
+        <button class="connect-btn" onclick="metaConectar('${c.id}','${c.nome}')">
+          f Conectar Facebook/Instagram
+        </button>
+      `}
+      ${c.li_token ? `
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <button class="connect-btn connected" onclick="liAbrirModalManual('${c.id}','${c.nome}')" style="background:#16a34a;flex:1">
+            ${c.li_org_id ? '✓ ' + (c.li_page_name || 'Página vinculada') + ' — alterar' : '✓ Token OK — Inserir ID da Página →'}
+          </button>
+          <button onclick="liDesconectar('${c.id}')" title="Reconectar LinkedIn" style="padding:8px 10px;background:none;border:1px solid #16a34a;border-radius:8px;cursor:pointer;font-size:13px;color:#16a34a">↺</button>
+        </div>
+      ` : `
+        <button class="connect-btn" onclick="liConectar('${c.id}','${c.nome}')" style="background:#0a66c2;margin-top:6px">
+          in Conectar LinkedIn
+        </button>
+      `}
+      <button onclick="deletarCliente('${c.id}','${c.nome}')" style="width:100%;margin-top:6px;padding:6px;background:none;color:var(--text3);border:1px solid var(--border);border-radius:8px;font-size:11px;cursor:pointer;font-family:inherit">Remover cliente</button>
+    </div>`;
+  }).join('');
+}
+
+async function salvarNovoCliente() {
+  const nome = document.getElementById('nc-nome').value.trim();
+  if (!nome) { showToast('Digite o nome do cliente'); return; }
+  const segmento = document.getElementById('nc-segmento').value.trim();
+  const cor = document.getElementById('nc-cor').value;
+  const redes = [];
+  if (document.getElementById('nc-ig').classList.contains('checked')) redes.push('ig');
+  if (document.getElementById('nc-fb').classList.contains('checked')) redes.push('fb');
+  if (document.getElementById('nc-li').classList.contains('checked')) redes.push('li');
+
+  const salvo = await dbSalvarCliente({nome, segmento, cor, redes});
+  if (salvo) {
+    allClientes.unshift(salvo);
+    renderClientes();
+    renderDashboard();
+    closeModal();
+    showToast('Cliente salvo com sucesso!');
+    document.getElementById('nc-nome').value = '';
+    document.getElementById('nc-segmento').value = '';
+    ['nc-ig','nc-fb','nc-li'].forEach(id => document.getElementById(id).classList.remove('checked'));
+  } else {
+    showToast('Erro ao salvar. Tente novamente.');
+  }
+}
+
+async function deletarCliente(id, nome) {
+  if (!confirm(`Remover o cliente "${nome}"? Os posts vinculados serão mantidos.`)) return;
+  await dbDeletarCliente(id);
+  allClientes = allClientes.filter(c => c.id !== id);
+  renderClientes();
+  renderDashboard();
+  showToast('Cliente removido.');
+}
+
+// ── AGENDAMENTO ──
+function toggleNet(el) { el.classList.toggle('checked'); updatePreview(); }
+
+function updatePreview() {
+  const client = document.getElementById('sched-client').value;
+  const caption = document.getElementById('sched-caption').value;
+  const date = document.getElementById('sched-date').value;
+  const time = document.getElementById('sched-time').value;
+  document.getElementById('preview-client-name').textContent = client || 'Cliente';
+  document.getElementById('preview-avatar').textContent = client ? client[0].toUpperCase() : '?';
+  document.getElementById('preview-caption').textContent = caption || 'A legenda vai aparecer aqui...';
+  if (date && time) {
+    const d = new Date(date+'T'+time);
+    document.getElementById('preview-time').textContent = d.toLocaleDateString('pt-BR')+' às '+time;
+    document.getElementById('preview-schedule-info').textContent = '📅 Agendado para '+d.toLocaleDateString('pt-BR')+' às '+time;
+  }
+  const nets = [...document.querySelectorAll('.net-check.checked')].map(n=>n.classList.contains('ig')?'ig':n.classList.contains('fb')?'fb':'li');
+  const netColors = {ig:'var(--ig)',fb:'var(--fb)',li:'var(--li)'};
+  const netNames = {ig:'Instagram',fb:'Facebook',li:'LinkedIn'};
+  document.getElementById('preview-net-labels').innerHTML = nets.map(n=>`<div class="preview-net-label"><div class="preview-net-dot" style="background:${netColors[n]}"></div><span style="font-size:11px;color:var(--text3)">${netNames[n]}</span></div>`).join('');
+}
+
+function handleFiles(files) {
+  const preview = document.getElementById('media-preview');
+  [...files].forEach(file => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'position:relative;width:90px;height:90px;border-radius:8px;overflow:hidden;border:1px solid var(--border);flex-shrink:0;';
+      wrap.innerHTML = `<img src="${e.target.result}" style="width:100%;height:100%;object-fit:cover">`;
+      const rm = document.createElement('div');
+      rm.innerHTML = '×';
+      rm.style.cssText = 'position:absolute;top:3px;right:5px;background:rgba(0,0,0,0.6);color:#fff;width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;cursor:pointer;font-weight:700;';
+      rm.onclick = () => wrap.remove();
+      wrap.appendChild(rm);
+      preview.appendChild(wrap);
+      document.querySelector('.preview-img').innerHTML = `<img src="${e.target.result}" style="width:100%;height:100%;object-fit:cover">`;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+function handleDrop(e) { e.preventDefault(); handleFiles(e.dataTransfer.files); }
+
+async function schedulePost() {
+  const client = document.getElementById('sched-client').value;
+  if (!client) { showToast('Selecione um cliente'); return; }
+  const caption = document.getElementById('sched-caption').value.trim();
+  if (!caption) { showToast('Digite uma legenda'); return; }
+  const date = document.getElementById('sched-date').value;
+  const time = document.getElementById('sched-time').value;
+  const type = document.getElementById('sched-type').value;
+  const nets = [...document.querySelectorAll('.net-check.checked')].map(n=>n.classList.contains('ig')?'ig':n.classList.contains('fb')?'fb':'li');
+  if (!nets.length) { showToast('Selecione ao menos uma rede social'); return; }
+  const previewImg = document.querySelector('#media-preview img');
+  const imgSrc = previewImg ? previewImg.src : null;
+
+  const post = {cliente_nome:client, legenda:caption, redes:nets, data_pub:date||null, hora_pub:time||null, status:'agendado', tipo:type, midia_url:imgSrc};
+
+  // Tenta publicar via APIs se for para hoje
+  const hoje = new Date().toISOString().split('T')[0];
+  if (date === hoje) {
+    const [metaOk, liOk] = await Promise.all([
+      nets.includes('ig') || nets.includes('fb') ? metaPublicar(post) : Promise.resolve(false),
+      nets.includes('li') ? liPublicar(post) : Promise.resolve(false)
+    ]);
+    if (metaOk || liOk) {
+      post.status = 'publicado';
+      showToast('Post publicado com sucesso!');
+    } else {
+      showToast('Post agendado! Conecte as contas para publicar automaticamente.');
+    }
+  } else {
+    showToast('Post agendado com sucesso!');
+  }
+
+  const salvo = await dbSalvarPost(post);
+  if (salvo) {
+    allPosts.unshift(salvo);
+    renderDashboard();
+    renderPubTable();
+    clearForm();
+    setTimeout(() => { pubFilter='agendado'; showPanel('publicacoes',document.querySelector('[onclick*=publicacoes]')); renderPubTable(); }, 800);
+  }
+}
+
+async function saveDraft() {
+  const client = document.getElementById('sched-client').value || 'Sem cliente';
+  const caption = document.getElementById('sched-caption').value.trim();
+  const date = document.getElementById('sched-date').value;
+  const time = document.getElementById('sched-time').value;
+  const type = document.getElementById('sched-type').value;
+  const nets = [...document.querySelectorAll('.net-check.checked')].map(n=>n.classList.contains('ig')?'ig':n.classList.contains('fb')?'fb':'li');
+  const previewImg = document.querySelector('#media-preview img');
+  const imgSrc = previewImg ? previewImg.src : null;
+
+  const draft = {cliente_nome:client, legenda:caption, redes:nets, data_pub:date||null, hora_pub:time||null, tipo:type, midia_url:imgSrc};
+  const salvo = await dbSalvarRascunho(draft);
+  if (salvo) {
+    allRascunhos.unshift(salvo);
+    renderDashboard();
+    showToast('Rascunho salvo!');
+    clearForm();
+  }
+}
+
+function clearForm() {
+  document.getElementById('sched-client').value = '';
+  document.getElementById('sched-caption').value = '';
+  document.getElementById('sched-type').value = 'post';
+  document.getElementById('sched-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('sched-time').value = '09:00';
+  document.getElementById('media-preview').innerHTML = '';
+  document.querySelector('.preview-img').innerHTML = '<div class="preview-img-placeholder">🖼</div>';
+  document.querySelectorAll('.net-check').forEach(n => { n.classList.remove('checked'); if(n.classList.contains('ig')) n.classList.add('checked'); });
+  updatePreview();
+}
+
+// ── PUBLICAÇÕES ──
+function filterPub(status, el) {
+  pubFilter = status;
+  document.querySelectorAll('.pub-submenu-item').forEach(i => i.classList.remove('active'));
+  el.classList.add('active');
+  renderPubTable();
+}
+
+function renderPubTable() {
+  const texto = (document.getElementById('filter-texto')?.value||'').toLowerCase();
+  const rede = document.getElementById('filter-rede')?.value||'';
+  const cliente = document.getElementById('filter-cliente-pub')?.value||'';
+
+  // Junta posts e rascunhos com flag
+  const tudo = [
+    ...allPosts.map(p=>({...p, _fonte:'post'})),
+    ...allRascunhos.map(p=>({...p, status:'rascunho', _fonte:'rascunho'}))
+  ];
+
+  // Atualiza contadores
+  ['agendado','publicado','erro'].forEach(s => {
+    const el = document.getElementById('count-'+s);
+    if (el) el.textContent = allPosts.filter(p=>p.status===s).length;
+  });
+  const elR = document.getElementById('count-rascunho');
+  if (elR) elR.textContent = allRascunhos.length;
+
+  let filtered = tudo.filter(p => {
+    if (pubFilter === 'rascunho') { if (p._fonte !== 'rascunho') return false; }
+    else { if (p._fonte !== 'post' || p.status !== pubFilter) return false; }
+    if (texto && !(p.legenda||'').toLowerCase().includes(texto) && !(p.cliente_nome||'').toLowerCase().includes(texto)) return false;
+    if (rede && !(p.redes||[]).includes(rede)) return false;
+    if (cliente && p.cliente_nome !== cliente) return false;
+    return true;
+  });
+
+  const rows = document.getElementById('pub-rows');
+  if (!rows) return;
+
+  if (filtered.length === 0) {
+    rows.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-title">Nenhuma publicação encontrada</div></div>';
+    return;
+  }
+
+  const statusLabel = {agendado:'Agendado',publicado:'Publicado',erro:'Erro',rascunho:'Rascunho'};
+  const statusColor = {agendado:'var(--blue)',publicado:'var(--green)',erro:'#ef4444',rascunho:'var(--text3)'};
+  const statusBg = {agendado:'rgba(37,99,235,0.1)',publicado:'rgba(22,163,74,0.1)',erro:'rgba(239,68,68,0.1)',rascunho:'var(--surface2)'};
+
+  rows.innerHTML = filtered.map(p => `
+    <div class="pub-row">
+      <div class="pub-client-info">
+        <div style="width:44px;height:44px;border-radius:8px;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">${p.midia_url?`<img src="${p.midia_url}" style="width:100%;height:100%;object-fit:cover;border-radius:8px">`:'📄'}</div>
+        <div>
+          <div class="pub-name">${p.cliente_nome||''}</div>
+          <div class="pub-caption">${p.legenda||'(sem legenda)'}</div>
+        </div>
+      </div>
+      <div class="pub-td">${p.data_pub||'--'}</div>
+      <div class="pub-td">${p.hora_pub||'--'}</div>
+      <div class="pub-td"><div class="pub-nets">${(p.redes||[]).map(n=>`<div class="pub-net-icon ${n}">${n.toUpperCase()}</div>`).join('')}</div></div>
+      <div class="pub-td"><span class="status-badge" style="background:${statusBg[p.status]||'var(--surface2)'};color:${statusColor[p.status]||'var(--text3)'}">${statusLabel[p.status]||p.status}</span></div>
+      <div class="pub-td">
+        ${p._fonte==='rascunho'
+          ? `<button onclick="editarRascunho('${p.id}')" style="font-size:11px;color:var(--accent);background:none;border:none;cursor:pointer;font-family:inherit">Editar</button>
+             <button onclick="deletarRascunho('${p.id}')" style="font-size:11px;color:#ef4444;background:none;border:none;cursor:pointer;font-family:inherit;margin-left:4px">Excluir</button>`
+          : `<button onclick="deletarPost('${p.id}')" style="font-size:11px;color:#ef4444;background:none;border:none;cursor:pointer;font-family:inherit">Excluir</button>`
+        }
+      </div>
+    </div>
+  `).join('');
+}
+
+async function deletarPost(id) {
+  if (!confirm('Excluir este post?')) return;
+  await dbDeletarPost(id);
+  allPosts = allPosts.filter(p => p.id !== id);
+  renderPubTable();
+  renderDashboard();
+  showToast('Post excluído.');
+}
+
+async function deletarRascunho(id) {
+  if (!confirm('Excluir este rascunho?')) return;
+  await dbDeletarRascunho(id);
+  allRascunhos = allRascunhos.filter(p => p.id !== id);
+  renderPubTable();
+  renderDashboard();
+  showToast('Rascunho excluído.');
+}
+
+function editarRascunho(id) {
+  const r = allRascunhos.find(p => p.id === id);
+  if (!r) return;
+  document.getElementById('sched-client').value = r.cliente_nome || '';
+  document.getElementById('sched-caption').value = r.legenda || '';
+  document.getElementById('sched-type').value = r.tipo || 'post';
+  document.getElementById('sched-date').value = r.data_pub || '';
+  document.getElementById('sched-time').value = r.hora_pub || '09:00';
+  document.querySelectorAll('.net-check').forEach(n => {
+    const net = n.classList.contains('ig')?'ig':n.classList.contains('fb')?'fb':'li';
+    n.classList.toggle('checked', (r.redes||[]).includes(net));
+  });
+  updatePreview();
+  showPanel('agendar', document.querySelector('[onclick*=agendar]'));
+  showToast('Rascunho carregado para edição');
+}
+
+// ── CALENDÁRIO ──
+function changeMonth(dir) {
+  calMonth += dir;
+  if (calMonth > 11) { calMonth = 0; calYear++; }
+  if (calMonth < 0) { calMonth = 11; calYear--; }
+  renderCalendar();
+}
+
+function renderCalendar() {
+  const meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  document.getElementById('cal-month-label').textContent = meses[calMonth]+' '+calYear;
+  document.getElementById('cal-title').textContent = 'Calendário Editorial — '+meses[calMonth]+' '+calYear;
+
+  const grid = document.getElementById('cal-grid-full');
+  const firstDay = new Date(calYear, calMonth, 1).getDay();
+  const daysInMonth = new Date(calYear, calMonth+1, 0).getDate();
+  const today = new Date();
+  let html = '';
+
+  for (let i = 0; i < firstDay; i++) {
+    const d = new Date(calYear, calMonth, -firstDay+i+1);
+    html += `<div class="cal-cell other-month"><span class="cal-num">${d.getDate()}</span></div>`;
+  }
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const isToday = today.getFullYear()===calYear && today.getMonth()===calMonth && today.getDate()===d;
+    const postsDodia = allPosts.filter(p => p.data_pub === dateStr);
+    const dots = [...new Set(postsDodia.flatMap(p=>p.redes||[]))].map(n=>`<div class="cal-dot ${n}"></div>`).join('');
+    html += `<div class="cal-cell${isToday?' today':''}"><span class="cal-num">${d}</span><div class="cal-dots">${dots}</div></div>`;
+  }
+  grid.innerHTML = html;
+}
+
+// ── RELATÓRIOS ──
+function renderRelatorios() {
+  const total = allPosts.length;
+  const agendados = allPosts.filter(p=>p.status==='agendado').length;
+  const publicados = allPosts.filter(p=>p.status==='publicado').length;
+  const porCliente = {};
+  allPosts.forEach(p => { porCliente[p.cliente_nome] = (porCliente[p.cliente_nome]||0)+1; });
+
+  document.getElementById('report-summary').innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px">
+      <div style="background:var(--surface2);border-radius:10px;padding:16px;text-align:center">
+        <div style="font-family:'Syne',sans-serif;font-size:24px;font-weight:700">${total}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">Posts criados</div>
+      </div>
+      <div style="background:var(--surface2);border-radius:10px;padding:16px;text-align:center">
+        <div style="font-family:'Syne',sans-serif;font-size:24px;font-weight:700">${publicados}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">Publicados</div>
+      </div>
+      <div style="background:var(--surface2);border-radius:10px;padding:16px;text-align:center">
+        <div style="font-family:'Syne',sans-serif;font-size:24px;font-weight:700">${agendados}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">Agendados</div>
+      </div>
+    </div>
+    ${Object.keys(porCliente).length > 0 ? `
+    <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;margin-bottom:12px">Posts por cliente</div>
+    ${Object.entries(porCliente).sort((a,b)=>b[1]-a[1]).map(([nome,qtd]) => `
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
+        <div style="flex:1;font-size:13px">${nome}</div>
+        <div style="font-size:13px;font-weight:600;color:var(--accent)">${qtd} post${qtd!==1?'s':''}</div>
+      </div>
+    `).join('')}` : '<div style="color:var(--text3);font-size:13px">Nenhum post criado ainda.</div>'}
+  `;
+}
+
+// ── PERFIL ──
+function atualizarSidebar(perfil) {
+  if (!perfil) return;
+  document.getElementById('sidebar-nome').textContent = perfil.nome || 'Usuário';
+  document.getElementById('sidebar-agencia').textContent = perfil.agencia || 'Agência';
+  const av = document.getElementById('sidebar-avatar');
+  if (perfil.foto_url) {
+    av.innerHTML = `<img src="${perfil.foto_url}" style="width:100%;height:100%;object-fit:cover">`;
+  } else {
+    av.textContent = (perfil.nome||'U').slice(0,2).toUpperCase();
+  }
+}
+
+function abrirModalPerfil() {
+  dbCarregarPerfil().then(p => {
+    if (!p) return;
+    document.getElementById('perfil-nome').value = p.nome || '';
+    document.getElementById('perfil-agencia').value = p.agencia || '';
+    document.getElementById('perfil-foto-url').value = p.foto_url || '';
+    const prev = document.getElementById('perfil-avatar-preview');
+    if (p.foto_url) {
+      prev.innerHTML = `<img src="${p.foto_url}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
+    } else {
+      prev.textContent = (p.nome||'U').slice(0,2).toUpperCase();
+    }
+  });
+}
+
+function handlePerfilFoto(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    document.getElementById('perfil-foto-url').value = e.target.result;
+    document.getElementById('perfil-avatar-preview').innerHTML = `<img src="${e.target.result}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
+  };
+  reader.readAsDataURL(file);
+}
+
+async function salvarPerfil() {
+  const nome = document.getElementById('perfil-nome').value.trim();
+  const agencia = document.getElementById('perfil-agencia').value.trim();
+  const foto_url = document.getElementById('perfil-foto-url').value;
+  await dbSalvarPerfil({ nome, agencia, foto_url });
+  atualizarSidebar({ nome, agencia, foto_url });
+  closeModal();
+  showToast('Perfil atualizado!');
+}
+
+// ── INIT ──
+async function init() {
+  const now = new Date();
+  calYear = now.getFullYear();
+  calMonth = now.getMonth();
+
+  initCorPicker();
+  document.getElementById('sched-date').value = now.toISOString().split('T')[0];
+
+  // Carrega dados do banco em paralelo
+  const [clientes, posts, rascunhos, perfil] = await Promise.all([
+    dbCarregarClientes(),
+    dbCarregarPosts(),
+    dbCarregarRascunhos(),
+    dbCarregarPerfil()
+  ]);
+
+  allClientes = clientes;
+  allPosts = posts;
+  allRascunhos = rascunhos;
+
+  atualizarSidebar(perfil);
+  document.getElementById('modal-perfil').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+  });
+  document.querySelector('.user-pill').addEventListener('click', abrirModalPerfil);
+
+  renderDashboard();
+  renderClientes();
+  renderPubTable();
+  renderCalendar();
+  renderRelatorios();
+}
+
+init();
+</script>
+</body>
+</html>
