@@ -1004,6 +1004,7 @@ let allPosts = [];
 let allRascunhos = [];
 let allClientes = [];
 let pubFilter = 'agendado';
+let _salvando = false; // flag anti-clique-duplo
 let calYear, calMonth;
 
 // ── UTILS ──
@@ -1341,6 +1342,11 @@ function previewCarouselStep(dir) {
 }
 
 async function schedulePost() {
+  if (_salvando) return;
+  _salvando = true;
+  const btnAgendar = document.querySelector('.btn-primary[onclick*="schedulePost"]');
+  if (btnAgendar) { btnAgendar.disabled = true; btnAgendar.textContent = 'Salvando...'; }
+  try {
   const client = document.getElementById('sched-client').value;
   if (!client) { showToast('Selecione um cliente'); return; }
   const caption = document.getElementById('sched-caption').value.trim();
@@ -1355,21 +1361,27 @@ async function schedulePost() {
 
   const post = {cliente_nome:client, legenda:caption, redes:nets, data_pub:date||null, hora_pub:time||null, status:'agendado', tipo:type, midia_url:imgSrc, midia_urls:allMediaSrcs};
 
-  // Tenta publicar via APIs se for para hoje
-  const hoje = new Date().toISOString().split('T')[0];
-  if (date === hoje) {
+  // Só tenta publicar imediatamente se a data/hora já passou (ou não tem data)
+  const agora = new Date();
+  const horarioPost = date && time ? new Date(date + 'T' + time) : null;
+  const jaPassou = !horarioPost || horarioPost <= agora;
+
+  if (jaPassou) {
     const [metaOk, liOk] = await Promise.all([
       nets.includes('ig') || nets.includes('fb') ? metaPublicar(post) : Promise.resolve(false),
       nets.includes('li') ? liPublicar(post) : Promise.resolve(false)
     ]);
     if (metaOk || liOk) {
       post.status = 'publicado';
-      showToast('Post publicado com sucesso!');
+      showToast('✅ Post publicado com sucesso!');
     } else {
-      showToast('Post agendado! Conecte as contas para publicar automaticamente.');
+      // API falhou — mantém como agendado, não marca como publicado
+      post.status = 'agendado';
+      showToast('📅 Post agendado! As contas serão usadas quando o app for aprovado pelo Meta.');
     }
   } else {
-    showToast('Post agendado com sucesso!');
+    const dataFormatada = horarioPost.toLocaleDateString('pt-BR') + ' às ' + time;
+    showToast('📅 Post agendado para ' + dataFormatada + '!');
   }
 
   const salvo = await dbSalvarPost(post);
@@ -1377,12 +1389,21 @@ async function schedulePost() {
     allPosts.unshift(salvo);
     renderDashboard();
     renderPubTable();
+    renderCalendar();
     clearForm();
-    setTimeout(() => { pubFilter='agendado'; showPanel('publicacoes',document.querySelector('[onclick*=publicacoes]')); renderPubTable(); }, 800);
+    const destino = post.status === 'publicado' ? 'publicado' : 'agendado';
+    setTimeout(() => { pubFilter = destino; showPanel('publicacoes', document.querySelector('[onclick*=publicacoes]')); renderPubTable(); }, 800);
+  }
+  } finally {
+    _salvando = false;
+    if (btnAgendar) { btnAgendar.disabled = false; btnAgendar.textContent = 'Agendar publicação →'; }
   }
 }
 
 async function saveDraft() {
+  if (_salvando) return;
+  _salvando = true;
+  try {
   const client = document.getElementById('sched-client').value || 'Sem cliente';
   const caption = document.getElementById('sched-caption').value.trim();
   const date = document.getElementById('sched-date').value;
@@ -1396,9 +1417,11 @@ async function saveDraft() {
   if (salvo) {
     allRascunhos.unshift(salvo);
     renderDashboard();
+    renderCalendar();
     showToast('Rascunho salvo!');
     clearForm();
   }
+  } finally { _salvando = false; }
 }
 
 function clearForm() {
