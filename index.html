@@ -304,6 +304,45 @@ async function fetchMetaProfilePhoto(clienteId, pageId, pageToken) {
   } catch(e) { console.log('Foto não carregada:', e); }
 }
 
+function metaAbrirModalManual(clienteId, clienteNome) {
+  document.getElementById('meta-manual-cliente-id').value = clienteId;
+  document.getElementById('meta-manual-cliente-nome').textContent = clienteNome;
+  document.getElementById('meta-manual-page-id').value = '';
+  document.getElementById('modal-meta-manual').style.display = 'flex';
+}
+
+async function metaSalvarManual() {
+  const clienteId = document.getElementById('meta-manual-cliente-id').value;
+  const pageId = document.getElementById('meta-manual-page-id').value.trim();
+  if (!pageId) { showToast('Digite o ID da página'); return; }
+
+  // Busca token atual
+  const { data } = await supa.from('clientes').select('meta_token').eq('id', clienteId).single();
+  const token = data?.meta_token;
+
+  // Busca page token específico
+  let pageToken = token;
+  let pageName = 'Página ' + pageId;
+  let igId = null;
+  if (token) {
+    try {
+      const r = await fetch(`https://graph.facebook.com/v19.0/${pageId}?fields=name,access_token,instagram_business_account&access_token=${encodeURIComponent(token)}`);
+      const d = await r.json();
+      if (d.access_token) pageToken = d.access_token;
+      if (d.name) pageName = d.name;
+      if (d.instagram_business_account?.id) igId = d.instagram_business_account.id;
+    } catch(e) {}
+  }
+
+  await supa.from('clientes').update({ meta_page_id: pageId, meta_token: pageToken, meta_page_name: pageName, meta_ig_id: igId }).eq('id', clienteId);
+  const idx = allClientes.findIndex(c => c.id === clienteId);
+  if (idx >= 0) { allClientes[idx].meta_page_id = pageId; allClientes[idx].meta_token = pageToken; allClientes[idx].meta_page_name = pageName; allClientes[idx].meta_ig_id = igId; }
+  document.getElementById('modal-meta-manual').style.display = 'none';
+  fetchMetaProfilePhoto(clienteId, pageId, pageToken).then(() => renderClientes());
+  renderClientes();
+  showToast('✅ Página "' + pageName + '" vinculada!' + (igId ? ' Instagram encontrado.' : ''));
+}
+
 async function metaDesconectar(clienteId) {
   if (!confirm('Desconectar Facebook/Instagram deste cliente?')) return;
   await supa.from('clientes').update({ meta_token: null, meta_page_id: null, meta_ig_id: null }).eq('id', clienteId);
@@ -896,6 +935,29 @@ async function metaPublicar(post) {
   </div>
 </div>
 
+<!-- MODAL ID MANUAL FACEBOOK -->
+<div id="modal-meta-manual" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center">
+  <div style="background:var(--surface);border-radius:16px;padding:28px;width:400px;max-width:95vw;display:flex;flex-direction:column;gap:16px">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px">Vincular Página Facebook</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:2px">Cliente: <span id="meta-manual-cliente-nome"></span></div>
+      </div>
+      <button onclick="document.getElementById('modal-meta-manual').style.display='none'" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text3)">×</button>
+    </div>
+    <input type="hidden" id="meta-manual-cliente-id">
+    <div>
+      <label style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;font-weight:500;display:block;margin-bottom:6px">ID da Página Facebook</label>
+      <input type="text" id="meta-manual-page-id" placeholder="Ex: 123456789" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:14px;font-family:'DM Sans',sans-serif;color:var(--text1);outline:none;box-sizing:border-box">
+      <div style="font-size:11px;color:var(--text3);margin-top:6px">Encontre em: Facebook → sua página → Sobre → ID da página</div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button onclick="document.getElementById('modal-meta-manual').style.display='none'" style="flex:1;padding:10px;background:none;border:1px solid var(--border);border-radius:8px;cursor:pointer;font-family:inherit;font-size:13px">Cancelar</button>
+      <button onclick="metaSalvarManual()" style="flex:1;padding:10px;background:#1877f2;color:#fff;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:500">Salvar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL ID MANUAL LINKEDIN -->
 <div id="modal-li-manual" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center">
   <div style="background:var(--surface);border-radius:16px;padding:28px;width:400px;max-width:95vw;display:flex;flex-direction:column;gap:16px">
@@ -1079,8 +1141,8 @@ function renderClientes() {
       </div>
       ${conectado ? `
         <div style="display:flex;gap:6px">
-          <button class="connect-btn connected" onclick="metaSelecionarPagina('${c.id}','${c.nome}')" style="flex:1">
-            ${c.meta_page_id ? '✓ ' + (c.meta_page_name || 'Página vinculada') + ' — alterar' : '✓ Token OK — Selecionar Página →'}
+          <button class="connect-btn connected" onclick="metaAbrirModalManual('${c.id}','${c.nome}')" style="flex:1">
+            ${c.meta_page_id ? '✓ ' + (c.meta_page_name || 'Página vinculada') + ' — alterar' : '✓ Token OK — Inserir ID da Página →'}
           </button>
           <button onclick="metaDesconectar('${c.id}')" title="Desconectar" style="padding:8px 10px;background:none;border:1px solid #16a34a;border-radius:8px;cursor:pointer;font-size:13px;color:#16a34a">↺</button>
         </div>
