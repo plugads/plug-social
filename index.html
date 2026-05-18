@@ -1511,6 +1511,12 @@ function editarRascunho(id) {
   document.getElementById('sched-type').value = r.tipo || 'post';
   document.getElementById('sched-date').value = r.data_pub || '';
   document.getElementById('sched-time').value = r.hora_pub || '09:00';
+  mediaFiles = [];
+  previewCarouselIdx = 0;
+  if (r.midia_url) {
+    mediaFiles.push({ src: r.midia_url, type: r.midia_url.startsWith('data:video') ? 'video' : 'img' });
+  }
+  renderMediaThumbs();
   document.querySelectorAll('.net-check').forEach(n => {
     const net = n.classList.contains('ig')?'ig':n.classList.contains('fb')?'fb':'li';
     n.classList.toggle('checked', (r.redes||[]).includes(net));
