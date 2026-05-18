@@ -22,7 +22,7 @@
   .login-error.show { display:block; }
   .login-footer { font-size:11px;color:#9a9ab0;margin-top:24px;text-align:center; }
 </style>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&family=Plus+Jakarta+Sans:wght@600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 // ── SUPABASE ──
@@ -288,8 +288,9 @@ function metaAbrirModal(clienteId, clienteNome, paginas) {
 }
 
 async function metaSalvarIdManual() {
-  const clienteId = document.getElementById('meta-manual-cliente-id').value;
-  const pageId    = document.getElementById('meta-manual-page-id').value.trim();
+  const clienteId  = document.getElementById('meta-manual-cliente-id').value;
+  const pageId     = document.getElementById('meta-manual-page-id').value.trim();
+  const nomeManual = document.getElementById('meta-manual-page-name').value.trim();
   if (!pageId) { showToast('Digite o ID da página'); return; }
 
   const { data: cli } = await supa.from('clientes').select('meta_token,nome').eq('id', clienteId).single();
@@ -297,24 +298,39 @@ async function metaSalvarIdManual() {
 
   showToast('Verificando página...');
 
-  // Tenta buscar info da página pelo ID
-  let pageName = pageId;
+  let pageName  = nomeManual || pageId;
   let pageToken = cli.meta_token;
-  let igId = null;
+  let igId      = null;
   try {
     const res  = await fetch(`https://graph.facebook.com/v19.0/${pageId}?fields=name,access_token,instagram_business_account&access_token=${encodeURIComponent(cli.meta_token)}`);
     const json = await res.json();
-    if (json.name)  pageName  = json.name;
+    if (json.name)         pageName  = json.name;
     if (json.access_token) pageToken = json.access_token;
     igId = json.instagram_business_account?.id || null;
   } catch(e) {}
 
+  // Se API não retornou nome e usuário não preencheu, pede para preencher
+  if (pageName === pageId && !nomeManual) {
+    document.getElementById('meta-manual-page-name').style.borderColor = 'var(--accent)';
+    document.getElementById('meta-manual-page-name').placeholder = '⚠️ API não encontrou o nome — preencha aqui';
+    document.getElementById('meta-manual-page-name').focus();
+    showToast('Preencha o nome da página manualmente');
+    return;
+  }
+
   await supa.from('clientes').update({ meta_page_id: pageId, meta_token: pageToken, meta_ig_id: igId, meta_page_name: pageName }).eq('id', clienteId);
   const idx = allClientes.findIndex(c => c.id === clienteId);
-  if (idx >= 0) { allClientes[idx].meta_page_id = pageId; allClientes[idx].meta_token = pageToken; allClientes[idx].meta_ig_id = igId; allClientes[idx].meta_page_name = pageName; }
+  if (idx >= 0) {
+    allClientes[idx].meta_page_id   = pageId;
+    allClientes[idx].meta_token     = pageToken;
+    allClientes[idx].meta_ig_id     = igId;
+    allClientes[idx].meta_page_name = pageName;
+  }
   fetchMetaProfilePhoto(clienteId, pageId, pageToken).then(() => renderClientes());
   document.getElementById('modal-meta-paginas').style.display = 'none';
-  showToast('✅ Página "' + pageName + '" vinculada!' + (igId ? ' Instagram encontrado.' : ''));
+  document.getElementById('meta-manual-page-id').value   = '';
+  document.getElementById('meta-manual-page-name').value = '';
+  showToast('✅ Página "' + pageName + '" vinculada!' + (igId ? ' Instagram encontrado.' : ' Instagram não encontrado automaticamente.'));
   renderClientes();
 }
 
@@ -475,7 +491,7 @@ async function metaPublicar(post) {
   .client-card:hover { border-color:var(--text3);transform:translateY(-1px); }
   .client-header { display:flex;align-items:center;gap:12px;margin-bottom:14px; }
   .client-avatar { width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-weight:800;font-size:14px;color:#fff;flex-shrink:0; }
-  .client-name { font-family:'Syne',sans-serif;font-size:14px;font-weight:700; }
+  .client-name { font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:600; }
   .client-segment { font-size:11px;color:var(--text3);margin-top:1px; }
   .client-networks { display:flex;gap:6px;margin-bottom:14px; }
   .client-net { width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700; }
@@ -920,7 +936,8 @@ async function metaPublicar(post) {
 <!-- MODAL NOVO CLIENTE -->
 <div class="modal-overlay" id="modal-novo-cliente">
   <div class="modal">
-    <div class="modal-title">Novo cliente</div>
+    <div class="modal-title" id="nc-modal-title">Novo cliente</div>
+    <input type="hidden" id="nc-id" value="">
     <div class="form-grid">
       <div class="form-group">
         <label class="form-label">Nome da empresa</label>
@@ -947,7 +964,7 @@ async function metaPublicar(post) {
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
-      <button class="btn btn-primary" onclick="salvarNovoCliente()">Salvar cliente</button>
+      <button class="btn btn-primary" id="nc-btn-salvar" onclick="salvarNovoCliente()">Salvar cliente</button>
     </div>
   </div>
 </div>
@@ -993,9 +1010,10 @@ async function metaPublicar(post) {
     <div id="meta-paginas-lista" style="overflow-y:auto;max-height:260px;display:flex;flex-direction:column;gap:8px"></div>
     <!-- ID MANUAL -->
     <div style="border-top:1px solid var(--border);padding-top:14px">
-      <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Página não aparece na lista? Insira o ID manualmente</div>
+      <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Página não aparece na lista? Insira manualmente</div>
       <input type="hidden" id="meta-manual-cliente-id">
       <input type="text" id="meta-manual-page-id" placeholder="ID da Página Facebook (ex: 123456789)" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:13px;font-family:'DM Sans',sans-serif;color:var(--text);outline:none;box-sizing:border-box;margin-bottom:8px">
+      <input type="text" id="meta-manual-page-name" placeholder="Nome da página (opcional — se não preencher, usará o ID)" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:13px;font-family:'DM Sans',sans-serif;color:var(--text);outline:none;box-sizing:border-box;margin-bottom:8px">
       <button onclick="metaSalvarIdManual()" style="width:100%;padding:10px;background:var(--fb);color:#fff;border:none;border-radius:8px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600">Vincular por ID</button>
     </div>
   </div>
@@ -1072,7 +1090,16 @@ function showToast(msg) {
   t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), 3000);
 }
-function closeModal() { document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('open')); }
+function closeModal() {
+  document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('open'));
+  // Reset modal cliente para estado "novo"
+  document.getElementById('nc-id').value       = '';
+  document.getElementById('nc-nome').value     = '';
+  document.getElementById('nc-segmento').value = '';
+  document.getElementById('nc-modal-title').textContent = 'Novo cliente';
+  document.getElementById('nc-btn-salvar').textContent  = 'Salvar cliente';
+  ['nc-ig','nc-fb','nc-li'].forEach(id => document.getElementById(id).classList.remove('checked'));
+}
 function showPanel(id, btn) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.getElementById('panel-'+id).classList.add('active');
@@ -1207,35 +1234,62 @@ function renderClientes() {
           in Conectar LinkedIn
         </button>
       `}
+      <button onclick="editarCliente('${c.id}')" style="width:100%;margin-top:6px;padding:6px;background:none;color:var(--accent);border:1px solid var(--accent);border-radius:8px;font-size:11px;cursor:pointer;font-family:inherit;font-weight:600">✏️ Editar cliente</button>
       <button onclick="deletarCliente('${c.id}','${c.nome}')" style="width:100%;margin-top:6px;padding:6px;background:none;color:var(--text3);border:1px solid var(--border);border-radius:8px;font-size:11px;cursor:pointer;font-family:inherit">Remover cliente</button>
     </div>`;
   }).join('');
 }
 
 async function salvarNovoCliente() {
-  const nome = document.getElementById('nc-nome').value.trim();
+  const id       = document.getElementById('nc-id').value;
+  const nome     = document.getElementById('nc-nome').value.trim();
   if (!nome) { showToast('Digite o nome do cliente'); return; }
   const segmento = document.getElementById('nc-segmento').value.trim();
-  const cor = document.getElementById('nc-cor').value;
-  const redes = [];
+  const cor      = document.getElementById('nc-cor').value;
+  const redes    = [];
   if (document.getElementById('nc-ig').classList.contains('checked')) redes.push('ig');
   if (document.getElementById('nc-fb').classList.contains('checked')) redes.push('fb');
   if (document.getElementById('nc-li').classList.contains('checked')) redes.push('li');
 
-  const salvo = await dbSalvarCliente({nome, segmento, cor, redes});
-  if (salvo) {
-    allClientes.push(salvo);
+  if (id) {
+    // EDITAR existente
+    const { error } = await supa.from('clientes').update({ nome, segmento, cor, redes }).eq('id', id);
+    if (error) { showToast('Erro ao atualizar: ' + error.message); return; }
+    const idx = allClientes.findIndex(c => c.id === id);
+    if (idx >= 0) Object.assign(allClientes[idx], { nome, segmento, cor, redes });
     allClientes.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
-    renderClientes();
-    renderDashboard();
-    closeModal();
-    showToast('Cliente salvo com sucesso!');
-    document.getElementById('nc-nome').value = '';
-    document.getElementById('nc-segmento').value = '';
-    ['nc-ig','nc-fb','nc-li'].forEach(id => document.getElementById(id).classList.remove('checked'));
+    renderClientes(); renderDashboard(); closeModal();
+    showToast('Cliente atualizado!');
   } else {
-    showToast('Erro ao salvar. Verifique o console (F12) para detalhes.');
+    // NOVO
+    const salvo = await dbSalvarCliente({nome, segmento, cor, redes});
+    if (salvo) {
+      allClientes.push(salvo);
+      allClientes.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+      renderClientes(); renderDashboard(); closeModal();
+      showToast('Cliente salvo com sucesso!');
+    } else {
+      showToast('Erro ao salvar. Verifique o console (F12) para detalhes.');
+    }
   }
+}
+
+function editarCliente(id) {
+  const c = allClientes.find(c => c.id === id);
+  if (!c) return;
+  document.getElementById('nc-id').value       = id;
+  document.getElementById('nc-nome').value     = c.nome || '';
+  document.getElementById('nc-segmento').value = c.segmento || '';
+  document.getElementById('nc-cor').value      = c.cor || '#ff5c35';
+  document.querySelectorAll('.cor-opt').forEach(el => {
+    el.style.outline = el.style.backgroundColor === (c.cor || '#ff5c35') ? '3px solid #1a1a2e' : 'none';
+  });
+  ['ig','fb','li'].forEach(n => {
+    document.getElementById('nc-'+n).classList.toggle('checked', (c.redes||[]).includes(n));
+  });
+  document.getElementById('nc-modal-title').textContent = 'Editar cliente';
+  document.getElementById('nc-btn-salvar').textContent  = 'Salvar alterações';
+  document.getElementById('modal-novo-cliente').classList.add('open');
 }
 
 async function deletarCliente(id, nome) {
