@@ -139,9 +139,9 @@ async function liSalvarManual() {
   const clienteId = document.getElementById('li-manual-cliente-id').value;
   const orgId = document.getElementById('li-manual-org-id').value.trim();
   if (!orgId) { showToast('Digite o ID da página'); return; }
-  await supa.from('clientes').update({ li_org_id: orgId, li_page_name: orgNome }).eq('id', clienteId);
+  await supa.from('clientes').update({ li_org_id: orgId }).eq('id', clienteId);
   const idx = allClientes.findIndex(c => c.id === clienteId);
-  if (idx >= 0) { allClientes[idx].li_org_id = orgId; allClientes[idx].li_page_name = orgNome; }
+  if (idx >= 0) { allClientes[idx].li_org_id = orgId; }
   document.getElementById('modal-li-manual').style.display = 'none';
   renderClientes();
   showToast('✅ ID da página LinkedIn salvo!');
