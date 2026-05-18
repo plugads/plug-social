@@ -31,7 +31,7 @@ const SUPA_KEY = 'sb_publishable_JQfyqPkuhFx1UOya9f6LDw_2tVZU69k';
 const supa = supabase.createClient(SUPA_URL, SUPA_KEY);
 
 async function dbCarregarClientes() {
-  const { data, error } = await supa.from('clientes').select('*').order('criado_em',{ascending:false});
+  const { data, error } = await supa.from('clientes').select('*').order('nome',{ascending:true});
   if (error) { console.error(error); return []; }
   return data;
 }
@@ -1224,7 +1224,8 @@ async function salvarNovoCliente() {
 
   const salvo = await dbSalvarCliente({nome, segmento, cor, redes});
   if (salvo) {
-    allClientes.unshift(salvo);
+    allClientes.push(salvo);
+    allClientes.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
     renderClientes();
     renderDashboard();
     closeModal();
