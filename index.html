@@ -1309,17 +1309,36 @@ let mediaFiles = [];
 let previewCarouselIdx = 0;
 let previewActiveNet = null;
 
-function handleFiles(files) {
-  [...files].forEach(file => {
+async function handleFiles(files) {
+  for (const file of [...files]) {
     const isVideo = file.type.startsWith('video/');
-    const reader = new FileReader();
-    reader.onload = e => {
-      mediaFiles.push({ src: e.target.result, type: isVideo ? 'video' : 'img' });
-      renderMediaThumbs();
-      updatePreview();
-    };
-    reader.readAsDataURL(file);
-  });
+    // Preview imediato em base64 enquanto faz upload
+    const base64 = await new Promise(res => {
+      const r = new FileReader();
+      r.onload = e => res(e.target.result);
+      r.readAsDataURL(file);
+    });
+    const idx = mediaFiles.push({ src: base64, type: isVideo ? 'video' : 'img', uploading: true }) - 1;
+    renderMediaThumbs();
+    updatePreview();
+
+    // Upload para Supabase Storage
+    try {
+      const ext  = file.name.split('.').pop() || (isVideo ? 'mp4' : 'jpg');
+      const path = `posts/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+      const { data, error } = await supa.storage.from('post-images').upload(path, file, { contentType: file.type, upsert: false });
+      if (error) throw error;
+      const { data: urlData } = supa.storage.from('post-images').getPublicUrl(data.path);
+      mediaFiles[idx].src       = urlData.publicUrl;
+      mediaFiles[idx].uploading = false;
+    } catch(e) {
+      console.error('Erro upload:', e);
+      showToast('⚠️ Erro ao enviar imagem. Verifique o bucket post-images.');
+      mediaFiles[idx].uploading = false;
+    }
+    renderMediaThumbs();
+    updatePreview();
+  }
   document.getElementById('file-input').value = '';
 }
 function handleDrop(e) { e.preventDefault(); handleFiles(e.dataTransfer.files); }
@@ -1335,6 +1354,7 @@ function renderMediaThumbs() {
     thumb.dataset.idx = i;
     thumb.innerHTML =
       (f.type === 'video' ? `<video src="${f.src}" muted></video>` : `<img src="${f.src}" alt="">`) +
+      (f.uploading ? `<div style="position:absolute;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-weight:600">Enviando...</div>` : '') +
       `<div class="media-thumb-num">${i + 1}</div>` +
       `<div class="media-thumb-rm" data-rm="${i}">×</div>`;
     thumb.addEventListener('dragstart', e => {
@@ -1459,6 +1479,15 @@ async function schedulePost() {
   _salvando = true;
   const btnAgendar = document.querySelector('.btn-primary[onclick*="schedulePost"]');
   if (btnAgendar) { btnAgendar.disabled = true; btnAgendar.textContent = 'Salvando...'; }
+
+  // Verificar se ainda tem uploads em andamento
+  if (mediaFiles.some(f => f.uploading)) {
+    showToast('⏳ Aguarde o upload das imagens terminar...');
+    _salvando = false;
+    if (btnAgendar) { btnAgendar.disabled = false; btnAgendar.textContent = 'Agendar publicação →'; }
+    return;
+  }
+
   try {
   const client = document.getElementById('sched-client').value;
   if (!client) { showToast('Selecione um cliente'); return; }
