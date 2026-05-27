@@ -790,7 +790,7 @@ async function metaPublicar(post) {
                 <div id="upload-area" style="border:2px dashed var(--border);border-radius:10px;padding:22px;text-align:center;cursor:pointer;transition:border-color 0.15s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'" onclick="document.getElementById('file-input').click()" ondragover="event.preventDefault();this.style.borderColor='var(--accent)'" ondrop="handleDrop(event)">
                   <div style="font-size:22px;margin-bottom:6px">📎</div>
                   <div style="font-size:12px;color:var(--text3)">Arraste imagens/vídeos ou <span style="color:var(--accent);font-weight:600">clique para selecionar</span></div>
-                  <div style="font-size:10px;color:var(--text3);margin-top:4px">JPG, PNG, MP4 — múltiplos arquivos para carrossel</div>
+                  <div style="font-size:10px;color:var(--text3);margin-top:4px">JPG, PNG — máx 8MB · MP4, MOV (Reels) — máx 50MB · múltiplos para carrossel</div>
                 </div>
                 <input type="file" id="file-input" accept="image/*,video/*" multiple style="display:none" onchange="handleFiles(this.files)">
                 <div class="media-thumb-grid" id="media-preview"></div>
@@ -1312,6 +1312,14 @@ let previewActiveNet = null;
 async function handleFiles(files) {
   for (const file of [...files]) {
     const isVideo = file.type.startsWith('video/');
+
+    // Validar tamanho: 50MB para vídeos, 8MB para imagens
+    const maxSize = isVideo ? 50 * 1024 * 1024 : 8 * 1024 * 1024;
+    const maxLabel = isVideo ? '50MB' : '8MB';
+    if (file.size > maxSize) {
+      showToast(`⚠️ Arquivo muito grande! Máximo ${maxLabel} para ${isVideo ? 'vídeos' : 'imagens'}.`);
+      continue;
+    }
     // Preview imediato em base64 enquanto faz upload
     const base64 = await new Promise(res => {
       const r = new FileReader();
